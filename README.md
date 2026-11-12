@@ -1,58 +1,59 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# KalingaAlert
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+KalingaAlert is a location-targeted hazard advisory system for Bongabong, Oriental Mindoro. The Laravel API and React application are separate projects in `backend/` and `frontend/`.
 
-## About Laravel
+## Local setup
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+Requirements: PHP 8.3+, Composer, Node.js/npm, and SQLite or MySQL/MariaDB.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+### Backend
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
-
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
-
-```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+```powershell
+cd backend
+composer install
+Copy-Item .env.example .env
+php artisan key:generate
+php artisan migrate
+php artisan serve --host=127.0.0.1 --port=8000
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Set `FRONTEND_URL=http://localhost:5173` in `backend/.env` to allow the local frontend origin. The default SQLite database is `backend/database/database.sqlite`. If PHP cannot verify PAGASA's TLS certificate, set `PAGASA_CA_BUNDLE` to a trusted CA bundle; do not disable certificate verification.
 
-## Contributing
+### Frontend
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+In a second terminal:
 
-## Code of Conduct
+```powershell
+cd frontend
+Copy-Item .env.example .env
+npm install
+npm run dev -- --host localhost
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+The frontend defaults to `http://127.0.0.1:8000/api/v1`; set `VITE_API_BASE_URL` in `frontend/.env` if the backend uses another URL. Open the Vite URL shown in the terminal. For production, build the frontend with `npm run build` in `frontend/`, deploy its `dist/` output separately, and set the backend's `FRONTEND_URL` and frontend's `VITE_API_BASE_URL` to their deployed origins.
 
-## Security Vulnerabilities
+The backend exposes the versioned API under `/api/v1` and validates browser cross-origin requests against `FRONTEND_URL`. The React app stores its short-lived bearer token in the current browser tab's `sessionStorage`.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+To run tests or the scheduled PAGASA import, use the backend project:
 
-## License
+```powershell
+cd backend
+php artisan test
+php artisan schedule:work
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+In production, configure Laravel's scheduler to run `php artisan schedule:run` every minute.
+
+## Roles and scope
+
+- **System administrator:** create staff accounts, assign staff roles, manage access, and review audit history.
+- **MDRRMO personnel:** manage vulnerable areas, review source records, prepare/approve alerts, and close alerts.
+- **BFP / fire information officer:** submit BFP-confirmed fire information for review.
+- **Authorized alert operator:** prepare alerts and publish approved advisories.
+- **Community resident:** maintain their barangay/sitio and view alerts matched to their registered location.
+
+Source verification and alert approval require a different staff account from the person who submitted or drafted the record. Alerts are delivered inside the web application and retain recipient delivery/read timestamps.
+
+This implementation does not predict hazards or fire locations, automatically publish imported PAGASA warnings, connect to BFP data feeds, send SMS or push notifications, collect resident incident reports, request rescue assistance, dispatch responders, plan evacuations, or replace official warnings and emergency instructions. PAGASA imports depend on its public warning pages being reachable and retain the page text and source link for authorized staff verification.
+
+The map uses Leaflet and OpenStreetMap tiles and needs an internet connection. Public maps contain risk-area polygons only; individual resident locations are not plotted.

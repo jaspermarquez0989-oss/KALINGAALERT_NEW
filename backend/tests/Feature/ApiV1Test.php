@@ -1,0 +1,626 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Enums\UserRole;
+use App\Models\Alert;
+use App\Models\HazardSource;
+use App\Models\RiskArea;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use Tests\TestCase;
+
+class ApiV1Test extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_registration_issues_a_token_without_accepting_privileged_roles_or_exposing_private_fields(): void
+    {
+        $response = $this->postJson('/api/v1/auth/register', [
+            'name' => 'API Resident',
+            'email' => 'api-resident@example.com',
+            'barangay' => 'Poblacion',
+            'sitio' => 'Purok 1',
+            'location_latitude' => 12.73,
+            'location_longitude' => 121.36,
+            'role' => UserRole::SystemAdministrator->value,
+            'password' => 'ResidentPass123',
+            'password_confirmation' => 'ResidentPass123',
+        ]);
+
+        $response
+            ->assertCreated()
+            ->assertJsonPath('token_type', 'Bearer')
+            ->assertJsonPath('data.role', UserRole::CommunityResident->value)
+            ->assertJsonMissingPath('data.location_latitude')
+            ->assertJsonMissingPath('data.password');
+
+        $this->assertDatabaseHas('users', [
+            'email' => 'api-resident@example.com',
+            'role' => UserRole::CommunityResident->value,
+        ]);
+
+        $this->withToken($response->json('access_token'))
+            ->getJson('/api/v1/me')
+            ->assertOk()
+            ->assertJsonPath('data.email', 'api-resident@example.com');
+    }
+
+    public function test_new_residents_see_matching_coverage_and_receive_active_advisories(): void
+    {
+        $operator = $this->makeUser(UserRole::AlertOperator->value);
+        $manager = $this->makeUser(UserRole::MdrrmoPersonnel->value);
+        $sourceAuthor = $this->makeUser(UserRole::BfpOfficer->value);
+        $source = $this->makeVerifiedSource($sourceAuthor, $manager);
+        $area = $this->makeRiskArea($manager);
+        $otherArea = $this->makeRiskArea($manager);
+        $otherArea->update(['sitio' => 'Purok 2']);
+        $alert = Alert::create([
+            'hazard_source_id' => $source->id,
+            'title' => 'Active community advisory',
+            'message' => 'A current alert for residents in Purok 1.',
+            'safety_instructions' => 'Follow local instructions.',
+            'severity' => 'warning',
+            'status' => Alert::STATUS_PUBLISHED,
+            'starts_at' => now()->subMinute(),
+            'published_at' => now()->subMinute(),
+            'created_by' => $operator->id,
+        ]);
+        $alert->riskAreas()->attach($area->id, [
+            'coverage_snapshot' => json_encode([
+                'name' => $area->name,
+                'barangay' => $area->barangay,
+                'sitio' => $area->sitio,
+                'classification' => $area->classification,
+                'boundary' => $area->boundary,
+            ]),
+        ]);
+
+        $registration = $this->postJson('/api/v1/auth/register', [
+            'name' => 'New Bongabong Resident',
+            'email' => 'new-resident@example.com',
+            'barangay' => 'Bongabong',
+            'sitio' => 'Purok 1',
+            'password' => 'ResidentPass123',
+            'password_confirmation' => 'ResidentPass123',
+        ])->assertCreated();
+        $resident = User::query()->where('email', 'new-resident@example.com')->firstOrFail();
+
+        $this->assertDatabaseHas('alert_recipients', [
+            'alert_id' => $alert->id,
+            'user_id' => $resident->id,
+        ]);
+
+        $this->withToken($registration->json('access_token'))
+            ->getJson('/api/v1/my/alerts/status')
+            ->assertOk()
+            ->assertJsonPath('active_alert_count', 1)
+            ->assertJsonPath('unread_count', 1);
+
+        $this->withToken($registration->json('access_token'))
+            ->getJson('/api/v1/my/alerts')
+            ->assertOk()
+            ->assertJsonPath('data.0.alert.title', 'Active community advisory');
+
+        $this->withToken($registration->json('access_token'))
+            ->getJson('/api/v1/my/coverage')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $area->id)
+            ->assertJsonMissingPath('data.0.location_latitude');
+    }
+
+    public function test_api_routes_require_a_valid_active_account_token(): void
+    {
+        $inactiveUser = $this->makeUser(UserRole::AlertOperator->value, [
+            'email' => 'inactive@example.com',
+        ]);
+        $token = $this->tokenFor($inactiveUser);
+        $inactiveUser->update(['is_active' => false]);
+
+        $this->clearJwtRequestState();
+        $this->getJson('/api/v1/alerts')->assertUnauthorized();
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => $inactiveUser->email,
+            'password' => 'TestPassword123',
+        ])->assertUnauthorized();
+
+        $this->clearJwtRequestState();
+        $this->withToken($token)->getJson('/api/v1/me')->assertForbidden();
+    }
+
+    public function test_tokens_can_be_refreshed_and_revoked(): void
+    {
+        $user = $this->makeUser(UserRole::CommunityResident->value);
+        $token = $this->tokenFor($user);
+
+        $refreshedToken = $this->withToken($token)
+            ->postJson('/api/v1/auth/refresh')
+            ->assertOk()
+            ->json('access_token');
+
+        $this->clearJwtRequestState();
+        $this->withToken($token)
+            ->getJson('/api/v1/me')
+            ->assertUnauthorized();
+
+        $this->clearJwtRequestState();
+        $this->withToken($refreshedToken)
+            ->postJson('/api/v1/auth/logout')
+            ->assertOk()
+            ->assertJsonPath('message', 'Logged out successfully.');
+
+        $this->clearJwtRequestState();
+        $this->withToken($refreshedToken)
+            ->getJson('/api/v1/me')
+            ->assertUnauthorized();
+    }
+
+    public function test_staff_can_create_approve_publish_and_filter_alerts_through_the_api(): void
+    {
+        $creator = $this->makeUser(UserRole::AlertOperator->value, ['email' => 'operator@example.com']);
+        $approver = $this->makeUser(UserRole::MdrrmoPersonnel->value, ['email' => 'manager@example.com']);
+        $sourceAuthor = $this->makeUser(UserRole::BfpOfficer->value, ['email' => 'bfp@example.com']);
+        $resident = $this->makeUser(UserRole::CommunityResident->value, [
+            'email' => 'recipient@example.com',
+            'barangay' => 'Bongabong',
+            'sitio' => 'Purok 1',
+        ]);
+        $source = $this->makeVerifiedSource($sourceAuthor, $approver);
+        $area = $this->makeRiskArea($approver);
+
+        $createResponse = $this->withToken($this->tokenFor($creator))->postJson('/api/v1/alerts', [
+            'hazard_source_id' => $source->id,
+            'title' => 'Community weather warning',
+            'message' => 'Heavy rainfall may affect the community.',
+            'safety_instructions' => 'Follow instructions from local authorities.',
+            'severity' => 'warning',
+            'starts_at' => now()->toIso8601String(),
+            'risk_area_ids' => [$area->id],
+        ]);
+
+        $createResponse
+            ->assertCreated()
+            ->assertJsonPath('data.status', Alert::STATUS_DRAFT);
+
+        $alert = Alert::query()->where('title', 'Community weather warning')->firstOrFail();
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $creator->id,
+            'action' => 'alert.drafted',
+            'subject_id' => $alert->id,
+        ]);
+
+        $this->withToken($this->tokenFor($creator))
+            ->patchJson("/api/v1/alerts/{$alert->id}", ['title' => 'Updated community weather warning'])
+            ->assertOk()
+            ->assertJsonPath('data.title', 'Updated community weather warning')
+            ->assertJsonPath('data.message', 'Heavy rainfall may affect the community.');
+
+        $alert->refresh();
+
+        $this->withToken($this->tokenFor($approver))
+            ->patchJson("/api/v1/alerts/{$alert->id}/approve")
+            ->assertOk()
+            ->assertJsonPath('data.status', Alert::STATUS_APPROVED);
+
+        $this->withToken($this->tokenFor($creator))
+            ->patchJson("/api/v1/alerts/{$alert->id}/publish")
+            ->assertOk()
+            ->assertJsonPath('data.status', Alert::STATUS_PUBLISHED);
+
+        $this->assertDatabaseHas('alert_recipients', [
+            'alert_id' => $alert->id,
+            'user_id' => $resident->id,
+        ]);
+        $area->update(['name' => 'Updated area name']);
+
+        $this->withToken($this->tokenFor($creator))
+            ->getJson('/api/v1/alerts?status=published&severity=warning&sort=title&direction=asc')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $alert->id);
+
+        $this->withToken($this->tokenFor($creator))
+            ->getJson('/api/v1/alerts?sort=created_at%20DESC')
+            ->assertUnprocessable();
+    }
+
+    public function test_resident_api_exposes_only_matched_alerts_and_marks_opened_alerts_read(): void
+    {
+        $operator = $this->makeUser(UserRole::AlertOperator->value);
+        $source = $this->makeVerifiedSource(
+            $this->makeUser(UserRole::BfpOfficer->value),
+            $this->makeUser(UserRole::MdrrmoPersonnel->value),
+        );
+        $resident = $this->makeUser(UserRole::CommunityResident->value);
+        $otherResident = $this->makeUser(UserRole::CommunityResident->value);
+        $area = $this->makeRiskArea($operator);
+        $alert = Alert::create([
+            'hazard_source_id' => $source->id,
+            'title' => 'Current community warning',
+            'message' => 'A current alert for matched residents.',
+            'safety_instructions' => 'Follow local instructions.',
+            'severity' => 'warning',
+            'status' => Alert::STATUS_PUBLISHED,
+            'starts_at' => now()->subMinute(),
+            'published_at' => now()->subMinute(),
+            'created_by' => $operator->id,
+        ]);
+        $alert->riskAreas()->attach($area->id, [
+            'coverage_snapshot' => json_encode([
+                'name' => $area->name,
+                'barangay' => $area->barangay,
+                'sitio' => $area->sitio,
+                'classification' => $area->classification,
+                'boundary' => $area->boundary,
+            ]),
+        ]);
+        $alert->recipients()->create([
+            'user_id' => $resident->id,
+            'delivered_at' => now(),
+        ]);
+        $area->update(['name' => 'Updated area name']);
+
+        $residentToken = $this->tokenFor($resident);
+
+        $this->withToken($residentToken)
+            ->getJson('/api/v1/my/alerts')
+            ->assertOk()
+            ->assertJsonPath('data.0.alert.id', $alert->id);
+
+        $this->withToken($residentToken)
+            ->getJson("/api/v1/my/alerts/{$alert->id}")
+            ->assertOk()
+            ->assertJsonPath('data.id', $alert->id)
+            ->assertJsonPath('data.risk_areas.0.name', 'Bongabong Central')
+            ->assertJsonMissingPath('data.creator')
+            ->assertJsonMissingPath('data.approver')
+            ->assertJsonMissingPath('data.supersedes');
+
+        $this->assertNotNull($alert->recipients()->where('user_id', $resident->id)->firstOrFail()->read_at);
+
+        $this->withToken($this->tokenFor($otherResident))
+            ->getJson("/api/v1/my/alerts/{$alert->id}")
+            ->assertNotFound();
+    }
+
+    public function test_risk_area_api_accepts_geojson_and_validates_filter_and_sort_inputs(): void
+    {
+        $manager = $this->makeUser(UserRole::MdrrmoPersonnel->value);
+        $token = $this->tokenFor($manager);
+        $boundary = [
+            'type' => 'Polygon',
+            'coordinates' => [[
+                [121.3, 12.7],
+                [121.4, 12.7],
+                [121.4, 12.8],
+                [121.3, 12.8],
+                [121.3, 12.7],
+            ]],
+        ];
+
+        $response = $this->withToken($token)->postJson('/api/v1/risk-areas', [
+            'name' => 'Riverside',
+            'barangay' => 'Poblacion',
+            'classification' => 'Flood-prone',
+            'boundary' => $boundary,
+            'is_active' => true,
+        ]);
+
+        $response
+            ->assertCreated()
+            ->assertJsonPath('data.boundary.type', 'Polygon');
+
+        $this->assertDatabaseHas('risk_areas', [
+            'name' => 'Riverside',
+            'barangay' => 'Poblacion',
+        ]);
+
+        $this->withToken($token)
+            ->getJson('/api/v1/risk-areas?barangay=Poblacion&sort=name&direction=asc')
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'Riverside');
+
+        $this->withToken($token)
+            ->getJson('/api/v1/risk-areas?sort=name%20DESC')
+            ->assertUnprocessable();
+
+        $areaId = $response->json('data.id');
+        $this->withToken($token)
+            ->patchJson("/api/v1/risk-areas/{$areaId}", ['classification' => 'Landslide-prone'])
+            ->assertOk()
+            ->assertJsonPath('data.classification', 'Landslide-prone')
+            ->assertJsonPath('data.name', 'Riverside');
+
+        $this->withToken($token)
+            ->patchJson("/api/v1/risk-areas/{$areaId}/toggle")
+            ->assertOk()
+            ->assertJsonPath('data.is_active', false);
+
+        $this->withToken($token)
+            ->getJson('/api/v1/risk-areas?is_active=false')
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'Riverside');
+
+        $bfpOfficer = $this->makeUser(UserRole::BfpOfficer->value);
+        $this->withToken($this->tokenFor($bfpOfficer))
+            ->postJson('/api/v1/risk-areas', [])
+            ->assertForbidden();
+    }
+
+    public function test_hazard_source_submission_and_independent_review_are_available_through_the_api(): void
+    {
+        $officer = $this->makeUser(UserRole::BfpOfficer->value);
+        $manager = $this->makeUser(UserRole::MdrrmoPersonnel->value);
+
+        $response = $this->withToken($this->tokenFor($officer))->postJson('/api/v1/hazard-sources', [
+            'source_type' => 'fire',
+            'reference' => 'BFP-API-001',
+            'title' => 'Confirmed local fire information',
+            'details' => 'Information confirmed by the local BFP office.',
+            'issued_at' => now()->subMinutes(5)->toIso8601String(),
+        ]);
+
+        $response
+            ->assertCreated()
+            ->assertJsonPath('data.verification_status', 'pending');
+
+        $sourceId = $response->json('data.id');
+
+        $this->withToken($this->tokenFor($officer))
+            ->patchJson("/api/v1/hazard-sources/{$sourceId}/review", ['decision' => 'verified'])
+            ->assertForbidden();
+
+        $this->withToken($this->tokenFor($manager))
+            ->patchJson("/api/v1/hazard-sources/{$sourceId}/review", ['decision' => 'verified'])
+            ->assertOk()
+            ->assertJsonPath('data.verification_status', 'verified');
+    }
+
+    public function test_profile_api_exposes_private_location_only_to_the_owner_and_updates_password_safely(): void
+    {
+        $resident = $this->makeUser(UserRole::CommunityResident->value, [
+            'email' => 'profile-resident@example.com',
+            'name' => 'API Resident',
+            'barangay' => 'Poblacion',
+            'location_latitude' => 12.73,
+            'location_longitude' => 121.36,
+        ]);
+        $token = $this->tokenFor($resident);
+
+        $this->withToken($token)
+            ->getJson('/api/v1/me')
+            ->assertOk()
+            ->assertJsonMissingPath('data.location_latitude');
+
+        $this->withToken($token)
+            ->getJson('/api/v1/profile')
+            ->assertOk()
+            ->assertJsonPath('data.location_latitude', 12.73)
+            ->assertJsonPath('data.location_longitude', 121.36);
+
+        $this->withToken($token)
+            ->patchJson('/api/v1/profile', [
+                'name' => 'Updated Resident',
+                'email' => 'profile-resident@example.com',
+                'barangay' => 'Masaguisi',
+                'sitio' => 'Purok 2',
+                'location_latitude' => 12.74,
+                'location_longitude' => 121.37,
+                'current_password' => 'WrongPassword123',
+                'password' => 'UpdatedPassword123',
+                'password_confirmation' => 'UpdatedPassword123',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.current_password.0', 'The current password is incorrect.');
+
+        $this->assertDatabaseHas('users', [
+            'id' => $resident->id,
+            'name' => 'API Resident',
+            'barangay' => 'Poblacion',
+        ]);
+
+        $this->withToken($token)
+            ->patchJson('/api/v1/profile', [
+                'name' => 'Updated Resident',
+                'email' => 'profile-resident@example.com',
+                'barangay' => 'Masaguisi',
+                'sitio' => 'Purok 2',
+                'location_latitude' => 12.74,
+                'location_longitude' => 121.37,
+                'current_password' => 'TestPassword123',
+                'password' => 'UpdatedPassword123',
+                'password_confirmation' => 'UpdatedPassword123',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.name', 'Updated Resident')
+            ->assertJsonPath('data.location_latitude', 12.74);
+
+        $this->assertDatabaseHas('users', [
+            'id' => $resident->id,
+            'name' => 'Updated Resident',
+            'barangay' => 'Masaguisi',
+        ]);
+        $this->assertTrue(Hash::check('UpdatedPassword123', $resident->fresh()->password));
+    }
+
+    public function test_staff_api_restricts_management_and_records_staff_changes(): void
+    {
+        $administrator = $this->makeUser(UserRole::SystemAdministrator->value, [
+            'email' => 'staff-admin@example.com',
+        ]);
+        $administratorToken = $this->tokenFor($administrator);
+        $resident = $this->makeUser(UserRole::CommunityResident->value);
+
+        $this->withToken($this->tokenFor($resident))
+            ->getJson('/api/v1/staff')
+            ->assertForbidden();
+
+        $this->clearJwtRequestState();
+        $created = $this->withToken($administratorToken)
+            ->postJson('/api/v1/staff', [
+                'name' => 'New MDRRMO Member',
+                'email' => 'new-mdrrmo@example.com',
+                'role' => UserRole::MdrrmoPersonnel->value,
+                'password' => 'TemporaryStaff123',
+                'password_confirmation' => 'TemporaryStaff123',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.role', UserRole::MdrrmoPersonnel->value)
+            ->assertJsonPath('data.is_active', true);
+
+        $staffId = $created->json('data.id');
+
+        $this->withToken($administratorToken)
+            ->patchJson("/api/v1/staff/{$staffId}/role", ['role' => UserRole::AlertOperator->value])
+            ->assertOk()
+            ->assertJsonPath('data.role', UserRole::AlertOperator->value);
+
+        $this->withToken($administratorToken)
+            ->patchJson("/api/v1/staff/{$staffId}/active")
+            ->assertOk()
+            ->assertJsonPath('data.is_active', false);
+
+        $this->withToken($administratorToken)
+            ->getJson('/api/v1/staff/audit')
+            ->assertOk()
+            ->assertJsonPath('data.0.actor.id', $administrator->id);
+
+        $this->assertDatabaseHas('users', [
+            'id' => $staffId,
+            'role' => UserRole::AlertOperator->value,
+            'is_active' => false,
+        ]);
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $administrator->id,
+            'action' => 'staff.deactivated',
+            'subject_id' => $staffId,
+        ]);
+    }
+
+    public function test_web_page_paths_redirect_to_the_separate_frontend_and_preserve_role_access(): void
+    {
+        config(['services.frontend.url' => 'http://localhost:5173']);
+
+        foreach (['/', '/login', '/register'] as $path) {
+            $this->get($path)
+                ->assertRedirect('http://localhost:5173'.$path);
+        }
+
+        $administrator = $this->makeUser(UserRole::SystemAdministrator->value);
+        foreach ([
+            '/dashboard',
+            '/profile',
+            '/risk-areas',
+            '/risk-areas/create',
+            '/risk-areas/12/edit',
+            '/hazard-sources',
+            '/hazard-sources/create',
+            '/hazard-sources/12/review',
+            '/alerts',
+            '/alerts/create',
+            '/alerts/12',
+            '/alerts/12/edit',
+            '/staff',
+            '/staff/create',
+            '/staff/audit',
+        ] as $path) {
+            $this->actingAs($administrator)
+                ->get($path)
+                ->assertRedirect('http://localhost:5173'.$path);
+        }
+
+        $resident = $this->makeUser(UserRole::CommunityResident->value);
+        foreach (['/dashboard', '/profile', '/my-alerts'] as $path) {
+            $this->actingAs($resident)
+                ->get($path)
+                ->assertRedirect('http://localhost:5173'.$path);
+        }
+
+        $this->actingAs($resident)
+            ->get('/alerts/create')
+            ->assertForbidden();
+
+        $this->get('/not-a-page')->assertNotFound();
+    }
+
+    public function test_api_allows_the_configured_frontend_origin_to_make_authenticated_requests(): void
+    {
+        $this->withHeaders([
+            'Origin' => 'http://localhost:5173',
+            'Access-Control-Request-Method' => 'POST',
+            'Access-Control-Request-Headers' => 'authorization,content-type',
+        ])->options('/api/v1/auth/login')
+            ->assertNoContent()
+            ->assertHeader('Access-Control-Allow-Origin', 'http://localhost:5173')
+            ->assertHeader('Access-Control-Allow-Methods');
+    }
+
+    private function makeUser(string $role, array $attributes = []): User
+    {
+        return User::factory()->create([
+            'role' => $role,
+            'is_active' => true,
+            'password' => Hash::make('TestPassword123'),
+            ...$attributes,
+        ]);
+    }
+
+    private function makeVerifiedSource(User $creator, User $verifier): HazardSource
+    {
+        return HazardSource::create([
+            'source_type' => 'weather',
+            'organization' => 'PAGASA',
+            'title' => 'Official weather advisory',
+            'details' => 'Official source details.',
+            'issued_at' => now()->subMinutes(10),
+            'verification_status' => 'verified',
+            'created_by' => $creator->id,
+            'verified_by' => $verifier->id,
+            'verified_at' => now(),
+        ]);
+    }
+
+    private function makeRiskArea(User $creator): RiskArea
+    {
+        return RiskArea::create([
+            'name' => 'Bongabong Central',
+            'barangay' => 'Bongabong',
+            'sitio' => 'Purok 1',
+            'classification' => 'Flood-prone',
+            'boundary' => [
+                'type' => 'Polygon',
+                'coordinates' => [[
+                    [121.3, 12.7],
+                    [121.4, 12.7],
+                    [121.4, 12.8],
+                    [121.3, 12.8],
+                    [121.3, 12.7],
+                ]],
+            ],
+            'is_active' => true,
+            'created_by' => $creator->id,
+        ]);
+    }
+
+    private function tokenFor(User $user): string
+    {
+        $response = $this->postJson('/api/v1/auth/login', [
+            'email' => $user->email,
+            'password' => 'TestPassword123',
+        ]);
+
+        $response->assertOk();
+
+        return $response->json('access_token');
+    }
+
+    private function clearJwtRequestState(): void
+    {
+        Auth::forgetGuards();
+        $this->app->forgetInstance('tymon.jwt.auth');
+        $this->app->forgetInstance('tymon.jwt');
+    }
+}
