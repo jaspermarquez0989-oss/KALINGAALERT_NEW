@@ -1,3 +1,4 @@
+//global React
 import { useEffect, useState } from 'react';
 import { api, clearToken, getToken, saveToken } from './api.js';
 import {
