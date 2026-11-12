@@ -1,6 +1,6 @@
 # KalingaAlert
 
-KalingaAlert is a location-targeted hazard advisory system for Bongabong, Oriental Mindoro. The Laravel API and React application are separate projects in `backend/` and `frontend/`.
+KalingaAlert is a location-targeted hazard advisory system for Bongabong, Oriental Mindoro. The Laravel backend and React application are separate projects in `backend/` and `frontend/`. All browser-facing pages are React; Laravel's page URLs redirect to the configured frontend, and application data is provided by the versioned API.
 
 ## Local setup
 
@@ -32,7 +32,7 @@ npm run dev -- --host localhost
 
 The frontend defaults to `http://127.0.0.1:8000/api/v1`; set `VITE_API_BASE_URL` in `frontend/.env` if the backend uses another URL. Open the Vite URL shown in the terminal. For production, build the frontend with `npm run build` in `frontend/`, deploy its `dist/` output separately, and set the backend's `FRONTEND_URL` and frontend's `VITE_API_BASE_URL` to their deployed origins.
 
-The backend exposes the versioned API under `/api/v1` and validates browser cross-origin requests against `FRONTEND_URL`. The React app stores its short-lived bearer token in the current browser tab's `sessionStorage`.
+The backend exposes the versioned API under `/api/v1` and validates browser cross-origin requests against `FRONTEND_URL`. The React app stores its short-lived bearer token in the current browser tab's `sessionStorage`. There are no Blade UI templates or backend frontend-build steps.
 
 To run tests or the scheduled PAGASA import, use the backend project:
 

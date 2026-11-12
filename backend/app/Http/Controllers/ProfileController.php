@@ -7,15 +7,9 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
-use Illuminate\View\View;
 
 class ProfileController extends Controller
 {
-    public function edit(Request $request): View
-    {
-        return view('profile.edit', ['user' => $request->user()]);
-    }
-
     public function update(Request $request): RedirectResponse
     {
         $validated = $request->validate([

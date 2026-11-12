@@ -15,41 +15,28 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
-use Illuminate\View\View;
 
 class StaffController extends Controller
 {
-    public function index(Request $request): View|AnonymousResourceCollection
+    public function index(Request $request): AnonymousResourceCollection
     {
         $staff = User::query()->whereIn('role', UserRole::staffValues())->orderBy('name');
 
-        if ($request->routeIs('api.v1.*')) {
-            $filters = $request->validate([
-                'search' => ['sometimes', 'string', 'max:120'],
-                'per_page' => ['sometimes', 'integer', 'between:1,100'],
-            ]);
-
-            $staff->when(
-                isset($filters['search']),
-                fn (Builder $query) => $query->where(
-                    fn (Builder $searchQuery) => $searchQuery
-                        ->where('name', 'like', '%'.$filters['search'].'%')
-                        ->orWhere('email', 'like', '%'.$filters['search'].'%'),
-                ),
-            );
-
-            return UserResource::collection($staff->paginate($filters['per_page'] ?? 15)->withQueryString());
-        }
-
-        return view('staff.index', [
-            'staff' => $staff->paginate(15),
-            'roles' => UserRole::labels(),
+        $filters = $request->validate([
+            'search' => ['sometimes', 'string', 'max:120'],
+            'per_page' => ['sometimes', 'integer', 'between:1,100'],
         ]);
-    }
 
-    public function create(): View
-    {
-        return view('staff.form', ['roles' => UserRole::labels()]);
+        $staff->when(
+            isset($filters['search']),
+            fn (Builder $query) => $query->where(
+                fn (Builder $searchQuery) => $searchQuery
+                    ->where('name', 'like', '%'.$filters['search'].'%')
+                    ->orWhere('email', 'like', '%'.$filters['search'].'%'),
+            ),
+        );
+
+        return UserResource::collection($staff->paginate($filters['per_page'] ?? 15)->withQueryString());
     }
 
     public function store(Request $request, AuditRecorder $audit): RedirectResponse|JsonResponse
@@ -177,32 +164,26 @@ class StaffController extends Controller
         return back()->with('status', 'Staff account status updated.');
     }
 
-    public function audit(Request $request): View|JsonResponse
+    public function audit(Request $request): JsonResponse
     {
         $entries = AuditLog::query()->with('actor')->orderByDesc('created_at')->paginate(25);
 
-        if ($request->routeIs('api.v1.*')) {
-            return response()->json([
-                'data' => $entries->getCollection()->map(fn (AuditLog $entry): array => [
-                    'id' => $entry->id,
-                    'action' => $entry->action,
-                    'subject_type' => $entry->subject_type,
-                    'subject_id' => $entry->subject_id,
-                    'metadata' => $entry->metadata,
-                    'created_at' => $entry->created_at?->toIso8601String(),
-                    'actor' => UserResource::make($entry->actor)->resolve($request),
-                ])->values(),
-                'meta' => [
-                    'current_page' => $entries->currentPage(),
-                    'last_page' => $entries->lastPage(),
-                    'per_page' => $entries->perPage(),
-                    'total' => $entries->total(),
-                ],
-            ]);
-        }
-
-        return view('staff.audit', [
-            'entries' => $entries,
+        return response()->json([
+            'data' => $entries->getCollection()->map(fn (AuditLog $entry): array => [
+                'id' => $entry->id,
+                'action' => $entry->action,
+                'subject_type' => $entry->subject_type,
+                'subject_id' => $entry->subject_id,
+                'metadata' => $entry->metadata,
+                'created_at' => $entry->created_at?->toIso8601String(),
+                'actor' => UserResource::make($entry->actor)->resolve($request),
+            ])->values(),
+            'meta' => [
+                'current_page' => $entries->currentPage(),
+                'last_page' => $entries->lastPage(),
+                'per_page' => $entries->perPage(),
+                'total' => $entries->total(),
+            ],
         ]);
     }
 }

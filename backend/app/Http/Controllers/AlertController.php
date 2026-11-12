@@ -6,7 +6,6 @@ use App\Http\Resources\Api\V1\AlertRecipientResource;
 use App\Http\Resources\Api\V1\AlertResource;
 use App\Models\Alert;
 use App\Models\AlertRecipient;
-use App\Models\HazardSource;
 use App\Models\RiskArea;
 use App\Models\User;
 use App\Services\AuditRecorder;
@@ -19,60 +18,44 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
-use Illuminate\View\View;
 
 class AlertController extends Controller
 {
-    public function index(Request $request): View|AnonymousResourceCollection
+    public function index(Request $request): AnonymousResourceCollection
     {
         $query = Alert::query()
             ->with(['source', 'creator', 'approver'])
             ->withCount('recipients');
 
-        if ($this->isApiRequest($request)) {
-            $filters = $request->validate([
-                'status' => ['sometimes', Rule::in([
-                    Alert::STATUS_DRAFT,
-                    Alert::STATUS_APPROVED,
-                    Alert::STATUS_PUBLISHED,
-                    Alert::STATUS_CANCELLED,
-                    Alert::STATUS_EXPIRED,
-                ])],
-                'severity' => ['sometimes', Rule::in(['advisory', 'watch', 'warning', 'emergency'])],
-                'risk_area_id' => ['sometimes', 'integer', 'exists:risk_areas,id'],
-                'sort' => ['sometimes', Rule::in(['created_at', 'starts_at', 'ends_at', 'severity', 'title'])],
-                'direction' => ['sometimes', Rule::in(['asc', 'desc'])],
-                'per_page' => ['sometimes', 'integer', 'between:1,100'],
-            ]);
-
-            $query
-                ->when(isset($filters['status']), fn (Builder $builder) => $builder->where('status', $filters['status']))
-                ->when(isset($filters['severity']), fn (Builder $builder) => $builder->where('severity', $filters['severity']))
-                ->when(
-                    isset($filters['risk_area_id']),
-                    fn (Builder $builder) => $builder->whereHas(
-                        'riskAreas',
-                        fn (Builder $areas) => $areas->whereKey($filters['risk_area_id']),
-                    ),
-                )
-                ->orderBy($filters['sort'] ?? 'created_at', $filters['direction'] ?? 'desc')
-                ->orderByDesc('id');
-
-            return AlertResource::collection($query->paginate($filters['per_page'] ?? 15)->withQueryString());
-        }
-
-        return view('alerts.index', [
-            'alerts' => $query->orderByDesc('created_at')->paginate(15),
+        $filters = $request->validate([
+            'status' => ['sometimes', Rule::in([
+                Alert::STATUS_DRAFT,
+                Alert::STATUS_APPROVED,
+                Alert::STATUS_PUBLISHED,
+                Alert::STATUS_CANCELLED,
+                Alert::STATUS_EXPIRED,
+            ])],
+            'severity' => ['sometimes', Rule::in(['advisory', 'watch', 'warning', 'emergency'])],
+            'risk_area_id' => ['sometimes', 'integer', 'exists:risk_areas,id'],
+            'sort' => ['sometimes', Rule::in(['created_at', 'starts_at', 'ends_at', 'severity', 'title'])],
+            'direction' => ['sometimes', Rule::in(['asc', 'desc'])],
+            'per_page' => ['sometimes', 'integer', 'between:1,100'],
         ]);
-    }
 
-    public function create(): View
-    {
-        return view('alerts.form', [
-            'alert' => new Alert(['starts_at' => now()]),
-            'sources' => HazardSource::query()->where('verification_status', 'verified')->orderByDesc('issued_at')->get(),
-            'areas' => RiskArea::query()->where('is_active', true)->orderBy('barangay')->orderBy('name')->get(),
-        ]);
+        $query
+            ->when(isset($filters['status']), fn (Builder $builder) => $builder->where('status', $filters['status']))
+            ->when(isset($filters['severity']), fn (Builder $builder) => $builder->where('severity', $filters['severity']))
+            ->when(
+                isset($filters['risk_area_id']),
+                fn (Builder $builder) => $builder->whereHas(
+                    'riskAreas',
+                    fn (Builder $areas) => $areas->whereKey($filters['risk_area_id']),
+                ),
+            )
+            ->orderBy($filters['sort'] ?? 'created_at', $filters['direction'] ?? 'desc')
+            ->orderByDesc('id');
+
+        return AlertResource::collection($query->paginate($filters['per_page'] ?? 15)->withQueryString());
     }
 
     public function store(Request $request, AuditRecorder $audit): RedirectResponse|JsonResponse
@@ -110,34 +93,11 @@ class AlertController extends Controller
         return redirect()->route('alerts.show', $alert)->with('status', 'Alert submitted for independent approval. It remains unpublished until approved and published.');
     }
 
-    public function show(Request $request, Alert $alert): View|AlertResource
+    public function show(Alert $alert): AlertResource
     {
         $alert->load(['source', 'riskAreas', 'creator', 'approver', 'supersedes']);
 
-        if ($this->isApiRequest($request)) {
-            return AlertResource::make($alert);
-        }
-
-        $recipientCount = $alert->recipients()->count();
-
-        return view('alerts.show', [
-            'alert' => $alert,
-            'recipientCount' => $recipientCount,
-            'mapAreas' => $this->coverageForMap($alert),
-        ]);
-    }
-
-    public function edit(Alert $alert): View
-    {
-        abort_unless(in_array($alert->status, [Alert::STATUS_DRAFT, Alert::STATUS_APPROVED], true), 409);
-
-        $alert->load('riskAreas');
-
-        return view('alerts.form', [
-            'alert' => $alert,
-            'sources' => HazardSource::query()->where('verification_status', 'verified')->orderByDesc('issued_at')->get(),
-            'areas' => RiskArea::query()->where('is_active', true)->orderBy('barangay')->orderBy('name')->get(),
-        ]);
+        return AlertResource::make($alert);
     }
 
     public function update(Request $request, Alert $alert, AuditRecorder $audit): RedirectResponse|JsonResponse
@@ -401,7 +361,7 @@ class AlertController extends Controller
         return back()->with('status', 'Alert '.$validated['action'].'.');
     }
 
-    public function myAlerts(Request $request): View|AnonymousResourceCollection
+    public function myAlerts(Request $request): AnonymousResourceCollection
     {
         $recipients = AlertRecipient::query()
             ->where('user_id', $request->user()->id)
@@ -410,11 +370,7 @@ class AlertController extends Controller
             ->orderByDesc('delivered_at')
             ->paginate(12);
 
-        if ($this->isApiRequest($request)) {
-            return AlertRecipientResource::collection($recipients);
-        }
-
-        return view('alerts.resident-index', compact('recipients'));
+        return AlertRecipientResource::collection($recipients);
     }
 
     public function residentStatus(Request $request): JsonResponse
@@ -443,7 +399,7 @@ class AlertController extends Controller
         ])->header('Cache-Control', 'no-store, private');
     }
 
-    public function viewForResident(Request $request, Alert $alert): View|AlertResource|RedirectResponse
+    public function viewForResident(Request $request, Alert $alert): AlertResource|RedirectResponse
     {
         $recipient = AlertRecipient::query()
             ->where('alert_id', $alert->id)
@@ -496,33 +452,6 @@ class AlertController extends Controller
             : null;
 
         return $validated;
-    }
-
-    /**
-     * @return list<array<string, mixed>>
-     */
-    private function coverageForMap(Alert $alert): array
-    {
-        return $alert->riskAreas->map(function (RiskArea $area) use ($alert): array {
-            $snapshot = $area->pivot->coverage_snapshot;
-            if (is_string($snapshot)) {
-                $snapshot = json_decode($snapshot, true);
-            }
-
-            return [
-                'name' => $snapshot['name'] ?? $area->name,
-                'barangay' => $snapshot['barangay'] ?? $area->barangay,
-                'sitio' => $snapshot['sitio'] ?? $area->sitio,
-                'classification' => $snapshot['classification'] ?? $area->classification,
-                'boundary' => $snapshot['boundary'] ?? $area->boundary,
-                'alerts' => [[
-                    'title' => $alert->title,
-                    'severity' => $alert->severity,
-                    'message' => $alert->message,
-                    'safety_instructions' => $alert->safety_instructions,
-                ]],
-            ];
-        })->all();
     }
 
     private function isApiRequest(Request $request): bool

@@ -14,7 +14,6 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
-use Illuminate\View\View;
 
 class RiskAreaController extends Controller
 {
@@ -31,60 +30,49 @@ class RiskAreaController extends Controller
         return RiskAreaResource::collection($areas);
     }
 
-    public function index(Request $request): View|AnonymousResourceCollection
+    public function index(Request $request): AnonymousResourceCollection
     {
         $query = RiskArea::query()->with('creator');
 
-        if ($request->routeIs('api.v1.*')) {
-            $activeFilter = $request->query('is_active');
+        $activeFilter = $request->query('is_active');
 
-            if (is_string($activeFilter) && in_array(strtolower($activeFilter), ['true', 'false'], true)) {
-                $request->merge(['is_active' => $activeFilter === 'true']);
-            }
-
-            $filters = $request->validate([
-                'barangay' => ['sometimes', 'string', 'max:120'],
-                'classification' => ['sometimes', 'string', 'max:80'],
-                'is_active' => ['sometimes', 'boolean'],
-                'sort' => ['sometimes', Rule::in(['name', 'barangay', 'classification', 'created_at'])],
-                'direction' => ['sometimes', Rule::in(['asc', 'desc'])],
-                'per_page' => ['sometimes', 'integer', 'between:1,100'],
-            ]);
-
-            $sort = $filters['sort'] ?? 'barangay';
-
-            $query
-                ->when(isset($filters['barangay']), fn (Builder $builder) => $builder->where('barangay', $filters['barangay']))
-                ->when(
-                    isset($filters['classification']),
-                    fn (Builder $builder) => $builder->where('classification', $filters['classification']),
-                )
-                ->when(
-                    isset($filters['is_active']),
-                    fn (Builder $builder) => $builder->where('is_active', $request->boolean('is_active')),
-                )
-                ->orderBy($sort, $filters['direction'] ?? 'asc')
-                ->when($sort !== 'name', fn (Builder $builder) => $builder->orderBy('name'))
-                ->orderBy('id');
-
-            return RiskAreaResource::collection(
-                $query->paginate($filters['per_page'] ?? 15)->withQueryString(),
-            );
+        if (is_string($activeFilter) && in_array(strtolower($activeFilter), ['true', 'false'], true)) {
+            $request->merge(['is_active' => $activeFilter === 'true']);
         }
 
-        return view('risk-areas.index', [
-            'areas' => $query->orderBy('barangay')->orderBy('name')->paginate(15),
+        $filters = $request->validate([
+            'barangay' => ['sometimes', 'string', 'max:120'],
+            'classification' => ['sometimes', 'string', 'max:80'],
+            'is_active' => ['sometimes', 'boolean'],
+            'sort' => ['sometimes', Rule::in(['name', 'barangay', 'classification', 'created_at'])],
+            'direction' => ['sometimes', Rule::in(['asc', 'desc'])],
+            'per_page' => ['sometimes', 'integer', 'between:1,100'],
         ]);
+
+        $sort = $filters['sort'] ?? 'barangay';
+
+        $query
+            ->when(isset($filters['barangay']), fn (Builder $builder) => $builder->where('barangay', $filters['barangay']))
+            ->when(
+                isset($filters['classification']),
+                fn (Builder $builder) => $builder->where('classification', $filters['classification']),
+            )
+            ->when(
+                isset($filters['is_active']),
+                fn (Builder $builder) => $builder->where('is_active', $request->boolean('is_active')),
+            )
+            ->orderBy($sort, $filters['direction'] ?? 'asc')
+            ->when($sort !== 'name', fn (Builder $builder) => $builder->orderBy('name'))
+            ->orderBy('id');
+
+        return RiskAreaResource::collection(
+            $query->paginate($filters['per_page'] ?? 15)->withQueryString(),
+        );
     }
 
     public function show(RiskArea $riskArea): RiskAreaResource
     {
         return RiskAreaResource::make($riskArea->load('creator'));
-    }
-
-    public function create(): View
-    {
-        return view('risk-areas.form', ['area' => new RiskArea]);
     }
 
     public function store(Request $request, AuditRecorder $audit): RedirectResponse|JsonResponse
@@ -114,11 +102,6 @@ class RiskAreaController extends Controller
         }
 
         return redirect()->route('risk-areas.index')->with('status', 'Vulnerable area created.');
-    }
-
-    public function edit(RiskArea $riskArea): View
-    {
-        return view('risk-areas.form', ['area' => $riskArea]);
     }
 
     public function update(Request $request, RiskArea $riskArea, AuditRecorder $audit): RedirectResponse|JsonResponse

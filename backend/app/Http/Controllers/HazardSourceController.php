@@ -14,57 +14,38 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
-use Illuminate\View\View;
 
 class HazardSourceController extends Controller
 {
-    public function index(Request $request): View|AnonymousResourceCollection
+    public function index(Request $request): AnonymousResourceCollection
     {
         $query = HazardSource::query()->with(['creator', 'verifier']);
 
-        if ($request->routeIs('api.v1.*')) {
-            $filters = $request->validate([
-                'source_type' => ['sometimes', Rule::in([HazardType::Weather->value, HazardType::Fire->value])],
-                'verification_status' => ['sometimes', Rule::in(['pending', 'verified', 'rejected'])],
-                'sort' => ['sometimes', Rule::in(['issued_at', 'created_at', 'title'])],
-                'direction' => ['sometimes', Rule::in(['asc', 'desc'])],
-                'per_page' => ['sometimes', 'integer', 'between:1,100'],
-            ]);
-
-            $query
-                ->when(isset($filters['source_type']), fn (Builder $builder) => $builder->where('source_type', $filters['source_type']))
-                ->when(
-                    isset($filters['verification_status']),
-                    fn (Builder $builder) => $builder->where('verification_status', $filters['verification_status']),
-                )
-                ->orderBy($filters['sort'] ?? 'issued_at', $filters['direction'] ?? 'desc')
-                ->orderByDesc('id');
-
-            return HazardSourceResource::collection(
-                $query->paginate($filters['per_page'] ?? 15)->withQueryString(),
-            );
-        }
-
-        return view('hazard-sources.index', [
-            'sources' => $query->orderByDesc('issued_at')->paginate(15),
+        $filters = $request->validate([
+            'source_type' => ['sometimes', Rule::in([HazardType::Weather->value, HazardType::Fire->value])],
+            'verification_status' => ['sometimes', Rule::in(['pending', 'verified', 'rejected'])],
+            'sort' => ['sometimes', Rule::in(['issued_at', 'created_at', 'title'])],
+            'direction' => ['sometimes', Rule::in(['asc', 'desc'])],
+            'per_page' => ['sometimes', 'integer', 'between:1,100'],
         ]);
+
+        $query
+            ->when(isset($filters['source_type']), fn (Builder $builder) => $builder->where('source_type', $filters['source_type']))
+            ->when(
+                isset($filters['verification_status']),
+                fn (Builder $builder) => $builder->where('verification_status', $filters['verification_status']),
+            )
+            ->orderBy($filters['sort'] ?? 'issued_at', $filters['direction'] ?? 'desc')
+            ->orderByDesc('id');
+
+        return HazardSourceResource::collection(
+            $query->paginate($filters['per_page'] ?? 15)->withQueryString(),
+        );
     }
 
     public function show(HazardSource $hazardSource): HazardSourceResource
     {
         return HazardSourceResource::make($hazardSource->load(['creator', 'verifier']));
-    }
-
-    public function create(): View
-    {
-        return view('hazard-sources.form');
-    }
-
-    public function showReview(HazardSource $hazardSource): View
-    {
-        return view('hazard-sources.review', [
-            'source' => $hazardSource->load(['creator', 'verifier']),
-        ]);
     }
 
     public function store(Request $request, AuditRecorder $audit): RedirectResponse|JsonResponse
