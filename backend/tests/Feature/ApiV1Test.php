@@ -48,7 +48,7 @@ class ApiV1Test extends TestCase
             ->assertJsonPath('data.email', 'api-resident@example.com');
     }
 
-    public function test_new_residents_see_matching_coverage_and_receive_active_advisories(): void
+    public function test_new_residents_see_all_active_risk_areas_and_receive_active_advisories(): void
     {
         $operator = $this->makeUser(UserRole::AlertOperator->value);
         $manager = $this->makeUser(UserRole::MdrrmoPersonnel->value);
@@ -57,6 +57,8 @@ class ApiV1Test extends TestCase
         $area = $this->makeRiskArea($manager);
         $otherArea = $this->makeRiskArea($manager);
         $otherArea->update(['sitio' => 'Purok 2']);
+        $inactiveArea = $this->makeRiskArea($manager);
+        $inactiveArea->update(['is_active' => false]);
         $alert = Alert::create([
             'hazard_source_id' => $source->id,
             'title' => 'Active community advisory',
@@ -93,6 +95,11 @@ class ApiV1Test extends TestCase
             'user_id' => $resident->id,
         ]);
 
+        $outsideResident = $this->makeUser(UserRole::CommunityResident->value, [
+            'barangay' => 'Another Barangay',
+            'sitio' => 'Purok 9',
+        ]);
+
         $this->withToken($registration->json('access_token'))
             ->getJson('/api/v1/my/alerts/status')
             ->assertOk()
@@ -104,12 +111,20 @@ class ApiV1Test extends TestCase
             ->assertOk()
             ->assertJsonPath('data.0.alert.title', 'Active community advisory');
 
-        $this->withToken($registration->json('access_token'))
+        $coverageResponse = $this->withToken($registration->json('access_token'))
             ->getJson('/api/v1/my/coverage')
             ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.id', $area->id)
+            ->assertJsonCount(2, 'data')
             ->assertJsonMissingPath('data.0.location_latitude');
+        $visibleAreaIds = collect($coverageResponse->json('data'))->pluck('id')->all();
+        $this->assertEqualsCanonicalizing([$area->id, $otherArea->id], $visibleAreaIds);
+        $this->assertNotContains($inactiveArea->id, $visibleAreaIds);
+
+        $this->withToken($this->tokenFor($outsideResident))
+            ->getJson('/api/v1/my/alerts/status')
+            ->assertOk()
+            ->assertJsonPath('unread_count', 1)
+            ->assertJsonPath('alerts.0.title', 'Active community advisory');
     }
 
     public function test_api_routes_require_a_valid_active_account_token(): void
@@ -178,13 +193,15 @@ class ApiV1Test extends TestCase
             'message' => 'Heavy rainfall may affect the community.',
             'safety_instructions' => 'Follow instructions from local authorities.',
             'severity' => 'warning',
+            'intensity' => 4,
             'starts_at' => now()->toIso8601String(),
             'risk_area_ids' => [$area->id],
         ]);
 
         $createResponse
             ->assertCreated()
-            ->assertJsonPath('data.status', Alert::STATUS_DRAFT);
+            ->assertJsonPath('data.status', Alert::STATUS_DRAFT)
+            ->assertJsonPath('data.intensity', 4);
 
         $alert = Alert::query()->where('title', 'Community weather warning')->firstOrFail();
         $this->assertDatabaseHas('audit_logs', [
@@ -192,11 +209,16 @@ class ApiV1Test extends TestCase
             'action' => 'alert.drafted',
             'subject_id' => $alert->id,
         ]);
+        $this->assertDatabaseHas('alerts', ['id' => $alert->id, 'intensity' => 4]);
 
         $this->withToken($this->tokenFor($creator))
-            ->patchJson("/api/v1/alerts/{$alert->id}", ['title' => 'Updated community weather warning'])
+            ->patchJson("/api/v1/alerts/{$alert->id}", [
+                'title' => 'Updated community weather warning',
+                'intensity' => 5,
+            ])
             ->assertOk()
             ->assertJsonPath('data.title', 'Updated community weather warning')
+            ->assertJsonPath('data.intensity', 5)
             ->assertJsonPath('data.message', 'Heavy rainfall may affect the community.');
 
         $alert->refresh();
@@ -225,6 +247,20 @@ class ApiV1Test extends TestCase
         $this->withToken($this->tokenFor($creator))
             ->getJson('/api/v1/alerts?sort=created_at%20DESC')
             ->assertUnprocessable();
+
+        $this->withToken($this->tokenFor($creator))
+            ->postJson('/api/v1/alerts', [
+                'hazard_source_id' => $source->id,
+                'title' => 'Invalid intensity',
+                'message' => 'This intensity should be rejected.',
+                'safety_instructions' => 'Follow instructions from local authorities.',
+                'severity' => 'warning',
+                'intensity' => 6,
+                'starts_at' => now()->toIso8601String(),
+                'risk_area_ids' => [$area->id],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['intensity']);
     }
 
     public function test_resident_api_exposes_only_matched_alerts_and_marks_opened_alerts_read(): void
@@ -306,12 +342,16 @@ class ApiV1Test extends TestCase
             'barangay' => 'Poblacion',
             'classification' => 'Flood-prone',
             'boundary' => $boundary,
+            'latitude' => 12.75,
+            'longitude' => 121.35,
             'is_active' => true,
         ]);
 
         $response
             ->assertCreated()
-            ->assertJsonPath('data.boundary.type', 'Polygon');
+            ->assertJsonPath('data.boundary.type', 'Polygon')
+            ->assertJsonPath('data.latitude', 12.75)
+            ->assertJsonPath('data.longitude', 121.35);
 
         $this->assertDatabaseHas('risk_areas', [
             'name' => 'Riverside',
@@ -343,6 +383,30 @@ class ApiV1Test extends TestCase
             ->getJson('/api/v1/risk-areas?is_active=false')
             ->assertOk()
             ->assertJsonPath('data.0.name', 'Riverside');
+
+        $this->withToken($token)
+            ->postJson('/api/v1/risk-areas', [
+                'name' => 'Missing coordinates',
+                'barangay' => 'Poblacion',
+                'classification' => 'Flood-prone',
+                'boundary' => $boundary,
+                'is_active' => true,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['latitude', 'longitude']);
+
+        $this->withToken($token)
+            ->postJson('/api/v1/risk-areas', [
+                'name' => 'Outside center point',
+                'barangay' => 'Poblacion',
+                'classification' => 'Flood-prone',
+                'boundary' => $boundary,
+                'latitude' => 12.9,
+                'longitude' => 121.35,
+                'is_active' => true,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('latitude');
 
         $bfpOfficer = $this->makeUser(UserRole::BfpOfficer->value);
         $this->withToken($this->tokenFor($bfpOfficer))
@@ -590,6 +654,8 @@ class ApiV1Test extends TestCase
             'barangay' => 'Bongabong',
             'sitio' => 'Purok 1',
             'classification' => 'Flood-prone',
+            'latitude' => 12.75,
+            'longitude' => 121.35,
             'boundary' => [
                 'type' => 'Polygon',
                 'coordinates' => [[

@@ -17,6 +17,8 @@ class RiskArea extends Model
         'sitio',
         'classification',
         'boundary',
+        'latitude',
+        'longitude',
         'is_active',
         'created_by',
     ];
@@ -25,6 +27,8 @@ class RiskArea extends Model
     {
         return [
             'boundary' => 'array',
+            'latitude' => 'float',
+            'longitude' => 'float',
             'is_active' => 'boolean',
         ];
     }

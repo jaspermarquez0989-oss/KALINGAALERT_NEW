@@ -25,6 +25,8 @@ class RiskAreaResource extends JsonResource
             'sitio' => $snapshot['sitio'] ?? $this->sitio,
             'classification' => $snapshot['classification'] ?? $this->classification,
             'boundary' => $snapshot['boundary'] ?? $this->boundary,
+            'latitude' => $snapshot['latitude'] ?? $this->latitude,
+            'longitude' => $snapshot['longitude'] ?? $this->longitude,
             'is_active' => $this->when($snapshot === [], $this->is_active),
             'creator' => UserResource::make($this->whenLoaded('creator')),
             'created_at' => $this->created_at?->toIso8601String(),

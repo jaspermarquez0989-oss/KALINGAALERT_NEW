@@ -22,6 +22,7 @@ class AlertResource extends JsonResource
             'message' => $this->message,
             'safety_instructions' => $this->safety_instructions,
             'severity' => $this->severity,
+            'intensity' => $this->intensity,
             'status' => $this->status,
             'starts_at' => $this->starts_at?->toIso8601String(),
             'ends_at' => $this->ends_at?->toIso8601String(),

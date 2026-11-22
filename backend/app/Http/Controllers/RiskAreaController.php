@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Http\Resources\Api\V1\RiskAreaResource;
 use App\Models\RiskArea;
 use App\Services\AuditRecorder;
-use App\Services\RecipientMatcher;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -17,15 +16,13 @@ use Illuminate\Validation\Rule;
 
 class RiskAreaController extends Controller
 {
-    public function myCoverage(Request $request, RecipientMatcher $matcher): AnonymousResourceCollection
+    public function myCoverage(): AnonymousResourceCollection
     {
         $areas = RiskArea::query()
             ->where('is_active', true)
             ->orderBy('barangay')
             ->orderBy('name')
-            ->get()
-            ->filter(fn (RiskArea $riskArea): bool => $matcher->matchesArea($request->user(), $riskArea))
-            ->values();
+            ->get();
 
         return RiskAreaResource::collection($areas);
     }
@@ -89,6 +86,8 @@ class RiskAreaController extends Controller
                 'name' => $area->name,
                 'barangay' => $area->barangay,
                 'classification' => $area->classification,
+                'latitude' => $area->latitude,
+                'longitude' => $area->longitude,
             ]);
 
             return $area;
@@ -113,6 +112,8 @@ class RiskAreaController extends Controller
                 'sitio' => $request->input('sitio', $riskArea->sitio),
                 'classification' => $request->input('classification', $riskArea->classification),
                 'boundary' => $request->input('boundary', $riskArea->boundary),
+                'latitude' => $request->input('latitude', $riskArea->latitude),
+                'longitude' => $request->input('longitude', $riskArea->longitude),
                 'is_active' => $request->input('is_active', $riskArea->is_active),
             ]);
         }
@@ -120,6 +121,7 @@ class RiskAreaController extends Controller
         $validated = $this->validateArea($request);
         DB::transaction(function () use ($validated, $request, $riskArea, $audit): void {
             $previousBoundary = $riskArea->boundary;
+            $previousLocation = ['latitude' => $riskArea->latitude, 'longitude' => $riskArea->longitude];
             $riskArea->update([
                 ...$validated,
                 'is_active' => $request->boolean('is_active'),
@@ -131,6 +133,8 @@ class RiskAreaController extends Controller
                 'classification' => $riskArea->classification,
                 'previous_boundary' => $previousBoundary,
                 'updated_boundary' => $riskArea->boundary,
+                'previous_location' => $previousLocation,
+                'updated_location' => ['latitude' => $riskArea->latitude, 'longitude' => $riskArea->longitude],
             ]);
         });
 
@@ -174,6 +178,8 @@ class RiskAreaController extends Controller
             'boundary' => $request->routeIs('api.v1.*')
                 ? ['required', 'array']
                 : ['required', 'json'],
+            'latitude' => ['required', 'numeric', 'between:-90,90'],
+            'longitude' => ['required', 'numeric', 'between:-180,180'],
             'is_active' => ['required', 'boolean'],
         ]);
 
@@ -227,6 +233,22 @@ class RiskAreaController extends Controller
 
             if ($ring[0][0] != $ring[array_key_last($ring)][0] || $ring[0][1] != $ring[array_key_last($ring)][1]) {
                 $validator->errors()->add('boundary', 'The map boundary must be closed.');
+
+                return;
+            }
+
+            if (
+                $validator->errors()->has('latitude')
+                || $validator->errors()->has('longitude')
+                || ! $this->containsPoint(
+                    (float) $request->input('longitude'),
+                    (float) $request->input('latitude'),
+                    $ring,
+                )
+            ) {
+                if (! $validator->errors()->has('latitude') && ! $validator->errors()->has('longitude')) {
+                    $validator->errors()->add('latitude', 'The center point must be inside the risk-area boundary.');
+                }
             }
         });
 
@@ -236,5 +258,45 @@ class RiskAreaController extends Controller
             : $validated['boundary'];
 
         return $validated;
+    }
+
+    /**
+     * @param  list<array{0: float|int, 1: float|int}>  $ring
+     */
+    private function containsPoint(float $longitude, float $latitude, array $ring): bool
+    {
+        $inside = false;
+        $count = count($ring);
+
+        for ($current = 0, $previous = $count - 1; $current < $count; $previous = $current++) {
+            [$currentLongitude, $currentLatitude] = $ring[$current];
+            [$previousLongitude, $previousLatitude] = $ring[$previous];
+
+            $crossProduct = ($latitude - $currentLatitude) * ($previousLongitude - $currentLongitude)
+                - ($longitude - $currentLongitude) * ($previousLatitude - $currentLatitude);
+
+            if (
+                abs($crossProduct) < 1.0e-10
+                && $longitude >= min($currentLongitude, $previousLongitude) - 1.0e-10
+                && $longitude <= max($currentLongitude, $previousLongitude) + 1.0e-10
+                && $latitude >= min($currentLatitude, $previousLatitude) - 1.0e-10
+                && $latitude <= max($currentLatitude, $previousLatitude) + 1.0e-10
+            ) {
+                return true;
+            }
+
+            if (($currentLatitude > $latitude) !== ($previousLatitude > $latitude)) {
+                $intersection = ($previousLongitude - $currentLongitude)
+                    * ($latitude - $currentLatitude)
+                    / (($previousLatitude - $currentLatitude) ?: PHP_FLOAT_EPSILON)
+                    + $currentLongitude;
+
+                if ($longitude < $intersection) {
+                    $inside = ! $inside;
+                }
+            }
+        }
+
+        return $inside;
     }
 }

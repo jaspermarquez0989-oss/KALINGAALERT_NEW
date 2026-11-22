@@ -73,21 +73,26 @@ class RecipientMatcher
     {
         $alerts = Alert::query()
             ->currentlyActive()
-            ->with('riskAreas')
             ->get();
 
         foreach ($alerts as $alert) {
-            $matchesResident = $alert->riskAreas->contains(
-                fn (RiskArea $riskArea): bool => $this->matchesArea($resident, $riskArea),
+            $resident->alertRecipients()->firstOrCreate(
+                ['alert_id' => $alert->id],
+                ['delivered_at' => now()],
             );
-
-            if ($matchesResident) {
-                $resident->alertRecipients()->firstOrCreate(
-                    ['alert_id' => $alert->id],
-                    ['delivered_at' => now()],
-                );
-            }
         }
+    }
+
+    /**
+     * @return Collection<int, User>
+     */
+    public function allActiveResidents(): Collection
+    {
+        return User::query()
+            ->select('id')
+            ->where('role', UserRole::CommunityResident->value)
+            ->where('is_active', true)
+            ->get();
     }
 
     /**

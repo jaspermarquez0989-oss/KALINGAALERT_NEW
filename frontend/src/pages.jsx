@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, saveToken } from './api.js';
+import { formatCoordinatePair, formatLatitude, formatLongitude } from './coordinates.js';
+import { intensityColorForLevel } from './intensity.js';
 import MapView from './MapView.jsx';
 import {
     EmptyState,
@@ -19,7 +21,26 @@ import {
 } from './ui.jsx';
 
 const alertSeverities = ['advisory', 'watch', 'warning', 'emergency'];
+const advisoryIntensities = [
+    { value: 1, label: '1 - Very low' },
+    { value: 2, label: '2 - Low' },
+    { value: 3, label: '3 - Moderate' },
+    { value: 4, label: '4 - High' },
+    { value: 5, label: '5 - Very high' },
+];
 const staffRoles = ['system_admin', 'mdrrmo', 'bfp_officer', 'alert_operator'];
+
+function IntensityIndicator({ value, compact = false }) {
+    const level = Number(value) || 3;
+
+    return (
+        <span className="intensity-indicator">
+            <i aria-hidden="true" style={{ backgroundColor: intensityColorForLevel(level) }} />
+            {compact ? `${level}/5` : `Intensity ${level}/5`}
+        </span>
+    );
+}
+
 function FormError({ message }) {
     return <Notice>{message}</Notice>;
 }
@@ -56,7 +77,7 @@ function SeverityCard({ label, value, tone = '' }) {
 function AlertCard({ alert, href }) {
     return (
         <a className="alert-card" href={href}>
-            <div className="alert-card-top"><StatusBadge>{alert.severity}</StatusBadge><StatusBadge>{alert.status}</StatusBadge></div>
+            <div className="alert-card-top"><StatusBadge>{alert.severity}</StatusBadge><IntensityIndicator value={alert.intensity} /><StatusBadge>{alert.status}</StatusBadge></div>
             <h3>{alert.title}</h3>
             <p>{alert.message}</p>
             <div className="alert-card-foot"><span>{alert.risk_areas?.length ?? 0} covered area(s)</span><span>{formatDate(alert.published_at ?? alert.created_at)}</span></div>
@@ -71,7 +92,7 @@ export function LandingPage() {
                 <div className="landing-copy">
                     <p className="eyebrow"><span className="live-dot" /> COMMUNITY PREPAREDNESS · BONGABONG</p>
                     <h1>Warnings for the places that need them.</h1>
-                    <p className="landing-lede">KalingaAlert connects verified PAGASA weather bulletins and BFP fire information with MDRRMO-managed risk areas, then makes relevant advisories available to registered residents.</p>
+                    <p className="landing-lede">KalingaAlert connects verified PAGASA weather bulletins and BFP fire information with MDRRMO-managed risk areas, then shares published advisories with all residents.</p>
                     <div className="inline-actions">
                         <LinkButton href="/register">Register as a resident</LinkButton>
                         <LinkButton href="/login" secondary>Staff sign in</LinkButton>
@@ -91,7 +112,7 @@ export function LandingPage() {
                 <div className="process-grid">
                     <article><span>01</span><div className="process-icon">⌖</div><h3>Map vulnerable areas</h3><p>Authorized personnel maintain mapped coverage used to target advisories.</p></article>
                     <article><span>02</span><div className="process-icon">✓</div><h3>Verify the source</h3><p>Regional warnings and BFP-confirmed fire information are reviewed by staff.</p></article>
-                    <article><span>03</span><div className="process-icon">↗</div><h3>Reach matched residents</h3><p>Approved web alerts are shown to residents matched to selected areas.</p></article>
+                    <article><span>03</span><div className="process-icon">↗</div><h3>Notify all residents</h3><p>Approved advisories are shared with every active resident account.</p></article>
                 </div>
             </section>
         </div>
@@ -172,7 +193,7 @@ export function RegisterPage({ onAuthenticated }) {
     }
 
     return (
-        <AuthLayout title="Join your community" description="Create a resident account to see alerts matched to your registered location.">
+        <AuthLayout title="Join your community" description="Create a resident account to receive community advisories.">
             <FormError message={error} />
             <form className="stack-form" onSubmit={handleSubmit}>
                 <Field label="Full name"><TextInput name="name" autoComplete="name" maxLength="120" required /></Field>
@@ -209,10 +230,22 @@ export function DashboardPage({ user }) {
                         api('/my/coverage'),
                     ]);
                     if (isCurrent) {
+                        const alerts = alertsResponse.data.map((item) => item.alert);
+                        const areas = (coverageResponse.data ?? []).map((area) => ({
+                            ...area,
+                            alerts: alerts.filter((alert) => alert.risk_areas?.some((covered) => covered.id === area.id))
+                                .map(({ title, severity, intensity, message, safety_instructions }) => ({
+                                    title,
+                                    severity,
+                                    intensity,
+                                    message,
+                                    safety_instructions,
+                                })),
+                        }));
                         setData({
-                            alerts: alertsResponse.data.map((item) => item.alert),
+                            alerts,
                             status,
-                            areas: coverageResponse.data ?? [],
+                            areas,
                         });
                     }
                 } else {
@@ -231,6 +264,7 @@ export function DashboardPage({ user }) {
                             .map((alert) => ({
                                 title: alert.title,
                                 severity: alert.severity,
+                                intensity: alert.intensity,
                                 message: alert.message,
                                 safety_instructions: alert.safety_instructions,
                             })),
@@ -261,7 +295,7 @@ export function DashboardPage({ user }) {
 
     return (
         <>
-            <PageTitle eyebrow="COMMUNITY SITUATION" title={`Good day, ${user.name.split(' ')[0]}.`} description={isResident ? 'Here are the current advisories delivered to your registered location.' : 'A clear view of current advisories, mapped coverage, and source review.'} />
+            <PageTitle eyebrow="COMMUNITY SITUATION" title={`Good day, ${user.name.split(' ')[0]}.`} description={isResident ? 'Here are the current community advisories available to all residents.' : 'A clear view of current advisories, mapped coverage, and source review.'} />
             <div className="metric-grid">
                 <SeverityCard label="Active advisories" value={isResident ? data.status.active_alert_count : activeAlerts.length} tone="metric-accent" />
                 <SeverityCard label="Unread alerts" value={isResident ? data.status.unread_count : '—'} />
@@ -284,12 +318,12 @@ export function DashboardPage({ user }) {
                     </Panel>
                 )}
             </div>
-            <Panel title={isResident ? 'Your mapped coverage' : 'Mapped coverage'} className="map-panel">
+            <Panel title={isResident ? 'Community risk areas' : 'Mapped coverage'} className="map-panel">
                 {data.areas.length || isResident
                     ? <MapView areas={data.areas.filter((area) => area.is_active)} />
                     : <EmptyState title="No active mapped areas" />}
-                {isResident && <p className="muted">Your exact home location stays private. This map shows active risk areas matched to your registered location.</p>}
-                {isResident && data.areas.length === 0 && <Notice tone="info">No active risk areas match your registered location yet. You can update your barangay or sitio in your profile.</Notice>}
+                {isResident && <p className="muted">This map shows all active public risk areas and current advisory intensity. Your exact home location stays private.</p>}
+                {isResident && data.areas.length === 0 && <Notice tone="info">No active risk areas are currently mapped.</Notice>}
             </Panel>
             <p className="disclaimer"><strong>Safety notice</strong> KalingaAlert does not predict hazards, accept incident reports, or dispatch rescue. Follow official warnings and local emergency instructions.</p>
         </>
@@ -305,10 +339,11 @@ export function AlertsPage() {
             <Panel>
                 <PageState loading={loading} error={error}>
                     {!data?.data?.length ? <EmptyState title="No advisories have been created yet">Verified source records are required to prepare an advisory.</EmptyState> : (
-                        <div className="table-scroll"><table><thead><tr><th>Advisory</th><th>Severity</th><th>Status</th><th>Coverage</th><th>Updated</th><th /></tr></thead><tbody>
+                        <div className="table-scroll"><table><thead><tr><th>Advisory</th><th>Severity</th><th>Intensity</th><th>Status</th><th>Coverage</th><th>Updated</th><th /></tr></thead><tbody>
                             {data.data.map((alert) => <tr key={alert.id}>
                                 <td><strong>{alert.title}</strong><small>{alert.hazard_source?.organization ?? 'Official source'}</small></td>
                                 <td><StatusBadge>{alert.severity}</StatusBadge></td>
+                                <td><IntensityIndicator compact value={alert.intensity} /></td>
                                 <td><StatusBadge>{alert.status}</StatusBadge></td>
                                 <td>{alert.risk_areas?.length ?? 0} area(s)</td>
                                 <td>{formatDate(alert.updated_at)}</td>
@@ -337,6 +372,7 @@ export function AlertFormPage({ id }) {
         message: '',
         safety_instructions: '',
         severity: 'advisory',
+        intensity: 3,
         starts_at: toManilaDateTimeInput(new Date().toISOString()),
         ends_at: '',
         risk_area_ids: [],
@@ -369,6 +405,7 @@ export function AlertFormPage({ id }) {
                         message: alert.message,
                         safety_instructions: alert.safety_instructions,
                         severity: alert.severity,
+                        intensity: alert.intensity ?? 3,
                         starts_at: toManilaDateTimeInput(alert.starts_at),
                         ends_at: toManilaDateTimeInput(alert.ends_at),
                         risk_area_ids: alert.risk_areas?.map((area) => String(area.id)) ?? [],
@@ -441,6 +478,22 @@ export function AlertFormPage({ id }) {
                     <Field label="Safety instructions"><TextArea value={form.safety_instructions} maxLength="5000" rows="4" required onChange={(event) => update('safety_instructions', event.target.value)} /></Field>
                     <div className="form-grid">
                         <Field label="Severity"><SelectInput value={form.severity} onChange={(event) => update('severity', event.target.value)}>{alertSeverities.map((severity) => <option key={severity} value={severity}>{severity}</option>)}</SelectInput></Field>
+                        <Field
+                            label="Advisory intensity (1-5)"
+                            hint={`Selected: ${advisoryIntensities.find(({ value }) => value === form.intensity)?.label ?? '3 - Moderate'}`}
+                        >
+                            <SelectInput value={form.intensity} onChange={(event) => update('intensity', Number(event.target.value))}>
+                                {advisoryIntensities.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+                            </SelectInput>
+                            <div className="intensity-color-key" role="img" aria-label="Color scale: green for very low, yellow-green for low, yellow for moderate, orange for high, red for very high">
+                                {advisoryIntensities.map(({ value, label }) => (
+                                    <span className={form.intensity === value ? 'is-selected' : ''} key={value} title={label}>
+                                        <i aria-hidden="true" style={{ backgroundColor: intensityColorForLevel(value) }} />
+                                        <b>{value}</b>
+                                    </span>
+                                ))}
+                            </div>
+                        </Field>
                         <Field label="Starts at (Philippine time)"><TextInput type="datetime-local" value={form.starts_at} required onChange={(event) => update('starts_at', event.target.value)} /></Field>
                         <Field label="Ends at (optional)"><TextInput type="datetime-local" value={form.ends_at} onChange={(event) => update('ends_at', event.target.value)} /></Field>
                     </div>
@@ -480,21 +533,31 @@ export function AlertDetailPage({ id, user }) {
 
     if (loading) return <LoadingState />;
     if (error) return <Notice>{error}</Notice>;
+    const coverageAreas = (alert.risk_areas ?? []).map((area) => ({
+        ...area,
+        alerts: [{
+            title: alert.title,
+            severity: alert.severity,
+            intensity: alert.intensity,
+            message: alert.message,
+            safety_instructions: alert.safety_instructions,
+        }],
+    }));
 
     return (
         <>
             <PageTitle eyebrow="ADVISORY DETAILS" title={alert.title} description={`Created ${formatDate(alert.created_at)} · ${alert.hazard_source?.organization ?? 'Official source'}`} action={<LinkButton href="/alerts" secondary>Back to advisories</LinkButton>} />
             <Notice message={actionError}>{actionError}</Notice>
             <div className="detail-grid">
-                <Panel title="Advisory"><div className="detail-badges"><StatusBadge>{alert.severity}</StatusBadge><StatusBadge>{alert.status}</StatusBadge></div><p className="detail-message">{alert.message}</p><h3>Safety instructions</h3><p>{alert.safety_instructions}</p><dl className="detail-list"><div><dt>Starts</dt><dd>{formatDate(alert.starts_at)}</dd></div><div><dt>Ends</dt><dd>{formatDate(alert.ends_at)}</dd></div><div><dt>Recipients</dt><dd>{alert.recipient_count ?? 'Not published'}</dd></div><div><dt>Drafted by</dt><dd>{alert.creator?.name ?? '—'}</dd></div><div><dt>Approved by</dt><dd>{alert.approver?.name ?? 'Not approved'}</dd></div></dl></Panel>
+                <Panel title="Advisory"><div className="detail-badges"><StatusBadge>{alert.severity}</StatusBadge><IntensityIndicator value={alert.intensity} /><StatusBadge>{alert.status}</StatusBadge></div><p className="detail-message">{alert.message}</p><h3>Safety instructions</h3><p>{alert.safety_instructions}</p><dl className="detail-list"><div><dt>Starts</dt><dd>{formatDate(alert.starts_at)}</dd></div><div><dt>Ends</dt><dd>{formatDate(alert.ends_at)}</dd></div><div><dt>Recipients</dt><dd>{alert.recipient_count ?? 'Not published'}</dd></div><div><dt>Drafted by</dt><dd>{alert.creator?.name ?? '—'}</dd></div><div><dt>Approved by</dt><dd>{alert.approver?.name ?? 'Not approved'}</dd></div></dl></Panel>
                 <Panel title="Source and coverage"><div className="source-detail"><strong>{alert.hazard_source?.title}</strong><span>{alert.hazard_source?.organization}</span>{alert.hazard_source?.source_url && <a className="text-link" href={alert.hazard_source.source_url} target="_blank" rel="noreferrer">Open source</a>}</div><div className="coverage-list">{alert.risk_areas?.map((area) => <div key={area.id}><strong>{area.name}</strong><small>{area.barangay} · {area.classification}</small></div>)}</div></Panel>
             </div>
-            <Panel title="Coverage map"><MapView areas={alert.risk_areas ?? []} /></Panel>
+            <Panel title="Coverage heatmap"><MapView areas={coverageAreas} /></Panel>
             <Panel title="Workflow actions">
                 <div className="workflow-actions">
                     {['draft', 'approved'].includes(alert.status) && <LinkButton href={`/alerts/${alert.id}/edit`} secondary>Edit draft</LinkButton>}
                     {alert.status === 'draft' && alert.creator?.id !== user.id && <button className="button" disabled={busy} onClick={() => performAction(`/alerts/${id}/approve`)}>Approve</button>}
-                    {alert.status === 'approved' && alert.approver?.id !== user.id && <button className="button" disabled={busy} onClick={() => performAction(`/alerts/${id}/publish`)}>Publish to matched residents</button>}
+                    {alert.status === 'approved' && alert.approver?.id !== user.id && <button className="button" disabled={busy} onClick={() => performAction(`/alerts/${id}/publish`)}>Publish to all residents</button>}
                     {alert.status === 'published' && <button className="button button-muted" disabled={busy} onClick={() => {
                         if (window.confirm('Create a replacement draft for this advisory?')) performAction(`/alerts/${id}/revise`, 'POST');
                     }}>Create revision</button>}
@@ -515,9 +578,9 @@ export function ResidentAlertsPage() {
 
     return (
         <>
-            <PageTitle eyebrow="RESIDENT ALERTS" title="My advisories" description="Current alerts delivered to your registered area." />
+            <PageTitle eyebrow="RESIDENT ALERTS" title="Community advisories" description="Current public alerts available to all residents." />
             <Panel><PageState loading={loading} error={error}>
-                {items.length === 0 ? <EmptyState title="No active advisories">There are no current advisories matched to your account.</EmptyState> : (
+                {items.length === 0 ? <EmptyState title="No active advisories">There are no current community advisories.</EmptyState> : (
                     <div className="alert-list">{items.map((item) => <AlertCard key={item.alert.id} alert={item.alert} href={`/my-alerts/${item.alert.id}`} />)}</div>
                 )}
             </PageState></Panel>
@@ -531,15 +594,25 @@ export function ResidentAlertPage({ id }) {
 
     if (loading) return <LoadingState />;
     if (error) return <Notice>{error}</Notice>;
+    const coverageAreas = (alert.risk_areas ?? []).map((area) => ({
+        ...area,
+        alerts: [{
+            title: alert.title,
+            severity: alert.severity,
+            intensity: alert.intensity,
+            message: alert.message,
+            safety_instructions: alert.safety_instructions,
+        }],
+    }));
 
     return (
         <>
             <PageTitle eyebrow="RESIDENT ADVISORY" title={alert.title} action={<LinkButton href="/my-alerts" secondary>Back to my alerts</LinkButton>} />
             <div className="detail-grid">
-                <Panel title="What you need to know"><div className="detail-badges"><StatusBadge>{alert.severity}</StatusBadge></div><p className="detail-message">{alert.message}</p><h3>Safety instructions</h3><p>{alert.safety_instructions}</p><dl className="detail-list"><div><dt>Issued</dt><dd>{formatDate(alert.published_at)}</dd></div><div><dt>Valid until</dt><dd>{formatDate(alert.ends_at)}</dd></div></dl></Panel>
+                <Panel title="What you need to know"><div className="detail-badges"><StatusBadge>{alert.severity}</StatusBadge><IntensityIndicator value={alert.intensity} /></div><p className="detail-message">{alert.message}</p><h3>Safety instructions</h3><p>{alert.safety_instructions}</p><dl className="detail-list"><div><dt>Issued</dt><dd>{formatDate(alert.published_at)}</dd></div><div><dt>Valid until</dt><dd>{formatDate(alert.ends_at)}</dd></div></dl></Panel>
                 <Panel title="Official source"><strong>{alert.hazard_source?.title}</strong><p className="muted">{alert.hazard_source?.organization} · {formatDate(alert.hazard_source?.issued_at)}</p>{alert.hazard_source?.source_url && <a className="text-link" href={alert.hazard_source.source_url} target="_blank" rel="noreferrer">View official source</a>}<div className="coverage-list">{alert.risk_areas?.map((area) => <div key={area.id}><strong>{area.name}</strong><small>{area.barangay}{area.sitio ? ` · ${area.sitio}` : ''}</small></div>)}</div></Panel>
             </div>
-            <Panel title="Affected coverage"><MapView areas={alert.risk_areas ?? []} /></Panel>
+            <Panel title="Affected-area heatmap"><MapView areas={coverageAreas} /></Panel>
             <p className="disclaimer"><strong>Safety notice</strong> For emergencies, follow local authorities and official emergency service channels.</p>
         </>
     );
@@ -641,6 +714,21 @@ function RiskAreaList({ canManage }) {
     const { data, loading, error } = useApiData('/risk-areas?per_page=100');
     const [actionError, setActionError] = useState('');
     const [busyId, setBusyId] = useState(null);
+    const [publishedAlerts, setPublishedAlerts] = useState([]);
+    const [alertsError, setAlertsError] = useState('');
+
+    useEffect(() => {
+        if (!canManage) return undefined;
+        let isCurrent = true;
+        api('/alerts?status=published&per_page=100')
+            .then((response) => {
+                if (isCurrent) setPublishedAlerts(response.data ?? []);
+            })
+            .catch((requestError) => {
+                if (isCurrent) setAlertsError(requestError.message);
+            });
+        return () => { isCurrent = false; };
+    }, [canManage]);
 
     async function toggle(area) {
         setBusyId(area.id);
@@ -655,28 +743,51 @@ function RiskAreaList({ canManage }) {
         }
     }
 
+    const areas = (data?.data ?? []).map((area) => ({
+        ...area,
+        alerts: publishedAlerts.filter((alert) => alert.risk_areas?.some((covered) => covered.id === area.id))
+            .map(({ title, severity, intensity, message, safety_instructions }) => ({
+                title,
+                severity,
+                intensity,
+                message,
+                safety_instructions,
+            })),
+    }));
+
     return (
         <>
-            <PageTitle eyebrow="MAPPED COVERAGE" title="Risk areas" description="Maintain the verified coverage used to target community advisories." action={canManage && <LinkButton href="/risk-areas/create">Add risk area</LinkButton>} />
+            <PageTitle eyebrow="MAPPED COVERAGE" title="Risk areas" description="Maintain mapped coverage and view active advisory intensity." action={canManage && <LinkButton href="/risk-areas/create">Add risk area</LinkButton>} />
             <FormError message={actionError} />
-            <Panel><PageState loading={loading} error={error}>
-                {!data?.data?.length ? <EmptyState title="No risk areas configured">Add a mapped area before preparing location-targeted advisories.</EmptyState> : (
-                    <div className="table-scroll"><table><thead><tr><th>Area</th><th>Barangay</th><th>Classification</th><th>Status</th><th>Actions</th></tr></thead><tbody>
-                        {data.data.map((area) => <tr key={area.id}>
-                            <td><strong>{area.name}</strong><small>{area.sitio ?? 'All sitios'}</small></td><td>{area.barangay}</td><td>{area.classification}</td><td><StatusBadge>{area.is_active ? 'active' : 'inactive'}</StatusBadge></td>
+            <Panel><PageState loading={loading} error={error || alertsError}>
+                {!areas.length ? <EmptyState title="No risk areas configured">Add a mapped area before preparing advisories.</EmptyState> : (
+                    <div className="table-scroll"><table><thead><tr><th>Area</th><th>Barangay</th><th>Classification</th><th>Latitude</th><th>Longitude</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+                        {areas.map((area) => <tr key={area.id}>
+                            <td><strong>{area.name}</strong><small>{area.sitio ?? 'All sitios'}</small></td><td>{area.barangay}</td><td>{area.classification}</td><td>{formatLatitude(area.latitude) ?? '—'}</td><td>{formatLongitude(area.longitude) ?? '—'}</td><td><StatusBadge>{area.is_active ? 'active' : 'inactive'}</StatusBadge></td>
                             <td><div className="inline-actions">{canManage && <><a className="text-link" href={`/risk-areas/${area.id}/edit`}>Edit</a><button className="text-button" disabled={busyId === area.id} onClick={() => toggle(area)}>{area.is_active ? 'Deactivate' : 'Activate'}</button></>}</div></td>
                         </tr>)}
                     </tbody></table></div>
                 )}
             </PageState></Panel>
-            {data?.data?.length > 0 && <Panel title="Area map"><MapView areas={data.data.filter((area) => area.is_active)} /></Panel>}
+            {areas.length > 0 && <Panel title="Risk-area heatmap"><MapView areas={areas.filter((area) => area.is_active)} /></Panel>}
         </>
     );
 }
 
+function centerOfBoundary(boundary) {
+    const ring = boundary?.coordinates?.[0] ?? [];
+    if (!ring.length) return { latitude: '', longitude: '' };
+    const latitudes = ring.map(([, latitude]) => Number(latitude));
+    const longitudes = ring.map(([longitude]) => Number(longitude));
+    return {
+        latitude: String((Math.min(...latitudes) + Math.max(...latitudes)) / 2),
+        longitude: String((Math.min(...longitudes) + Math.max(...longitudes)) / 2),
+    };
+}
+
 function RiskAreaForm({ id }) {
     const editing = Boolean(id);
-    const [form, setForm] = useState({ name: '', barangay: '', sitio: '', classification: '', is_active: true });
+    const [form, setForm] = useState({ name: '', barangay: '', sitio: '', classification: '', latitude: '', longitude: '', is_active: true });
     const [boundary, setBoundary] = useState(null);
     const [loading, setLoading] = useState(editing);
     const [saving, setSaving] = useState(false);
@@ -688,11 +799,14 @@ function RiskAreaForm({ id }) {
         api(`/risk-areas/${id}`)
             .then((response) => {
                 if (isCurrent) {
+                    const fallbackCenter = centerOfBoundary(response.data.boundary);
                     setForm({
                         name: response.data.name,
                         barangay: response.data.barangay,
                         sitio: response.data.sitio ?? '',
                         classification: response.data.classification,
+                        latitude: response.data.latitude ?? fallbackCenter.latitude,
+                        longitude: response.data.longitude ?? fallbackCenter.longitude,
                         is_active: response.data.is_active,
                     });
                     setBoundary(response.data.boundary);
@@ -710,7 +824,13 @@ function RiskAreaForm({ id }) {
         try {
             await api(editing ? `/risk-areas/${id}` : '/risk-areas', {
                 method: editing ? 'PUT' : 'POST',
-                body: { ...form, boundary, is_active: Boolean(form.is_active) },
+                body: {
+                    ...form,
+                    latitude: Number(form.latitude),
+                    longitude: Number(form.longitude),
+                    boundary,
+                    is_active: Boolean(form.is_active),
+                },
             });
             window.location.assign('/risk-areas');
         } catch (requestError) {
@@ -724,7 +844,7 @@ function RiskAreaForm({ id }) {
 
     return (
         <>
-            <PageTitle eyebrow="MAPPED COVERAGE" title={editing ? 'Edit risk area' : 'Add risk area'} description="Draw the verified community coverage boundary on the map." />
+            <PageTitle eyebrow="MAPPED COVERAGE" title={editing ? 'Edit risk area' : 'Add risk area'} description="Enter coordinates or click the map to set the center; the map focuses on that point." />
             <Panel className="form-panel"><FormError message={error} />
                 <form className="stack-form" onSubmit={handleSubmit}>
                     <div className="form-grid">
@@ -732,11 +852,17 @@ function RiskAreaForm({ id }) {
                         <Field label="Barangay"><TextInput required maxLength="120" value={form.barangay} onChange={(event) => setForm({ ...form, barangay: event.target.value })} /></Field>
                         <Field label="Sitio / purok (optional)"><TextInput maxLength="120" value={form.sitio} onChange={(event) => setForm({ ...form, sitio: event.target.value })} /></Field>
                         <Field label="Hazard classification"><TextInput required maxLength="80" placeholder="Flood-prone, landslide-prone…" value={form.classification} onChange={(event) => setForm({ ...form, classification: event.target.value })} /></Field>
+                        <Field label="Latitude (decimal degrees)" hint="Positive values are N; negative values are S."><TextInput type="number" step="any" min="-90" max="90" required value={form.latitude} onChange={(event) => setForm({ ...form, latitude: event.target.value })} /></Field>
+                        <Field label="Longitude (decimal degrees)" hint="Positive values are E; negative values are W."><TextInput type="number" step="any" min="-180" max="180" required value={form.longitude} onChange={(event) => setForm({ ...form, longitude: event.target.value })} /></Field>
+                    </div>
+                    <div className="coordinate-preview" role="status">
+                        <strong>Formatted coordinates</strong>
+                        <span>{formatCoordinatePair(form.latitude, form.longitude) ?? 'Choose a center point on the map or enter both coordinates.'}</span>
                     </div>
                     <label className="choice-row"><input type="checkbox" checked={form.is_active} onChange={(event) => setForm({ ...form, is_active: event.target.checked })} /><span><strong>Active coverage</strong><small>Only active areas can receive new advisories.</small></span></label>
-                    <MapView editable boundary={boundary} onBoundaryChange={setBoundary} />
+                    <MapView editable boundary={boundary} latitude={form.latitude} longitude={form.longitude} onBoundaryChange={setBoundary} onLocationChange={({ latitude, longitude }) => setForm((current) => ({ ...current, latitude: String(latitude), longitude: String(longitude) }))} />
                     {!boundary && <Notice>Finish drawing a boundary before saving.</Notice>}
-                    <FormActions><SubmitButton saving={saving} disabled={!boundary}>{editing ? 'Save area' : 'Create area'}</SubmitButton><LinkButton href="/risk-areas" secondary>Cancel</LinkButton></FormActions>
+                    <FormActions><SubmitButton saving={saving} disabled={!boundary || form.latitude === '' || form.longitude === ''}>{editing ? 'Save area' : 'Create area'}</SubmitButton><LinkButton href="/risk-areas" secondary>Cancel</LinkButton></FormActions>
                 </form>
             </Panel>
         </>
@@ -810,7 +936,7 @@ export function ProfilePage({ user }) {
                         <Field label="Sitio / purok"><TextInput maxLength="120" value={form.sitio} onChange={(event) => setForm({ ...form, sitio: event.target.value })} /></Field>
                     </div>}
                     <div className="profile-location">
-                        <h3>Private alert location</h3><p className="field-hint">Coordinates are private and used only to match your account against a mapped alert boundary.</p>
+                        <h3>Private home location</h3><p className="field-hint">Coordinates remain private and help show mapped coverage relevant to your location. Community alerts are shared with all residents.</p>
                         <div className="form-grid">
                             <Field label="Latitude"><TextInput type="number" step="any" min="-90" max="90" value={form.location_latitude} onChange={(event) => setForm({ ...form, location_latitude: event.target.value })} /></Field>
                             <Field label="Longitude"><TextInput type="number" step="any" min="-180" max="180" value={form.location_longitude} onChange={(event) => setForm({ ...form, location_longitude: event.target.value })} /></Field>
