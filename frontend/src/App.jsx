@@ -1,5 +1,7 @@
 //global React
 import { useEffect, useState } from 'react';
+import Swal from 'sweetalert2';
+import 'sweetalert2/dist/sweetalert2.min.css';
 import { api, clearToken, getToken, saveToken } from './api.js';
 import {
     AlertDetailPage,
@@ -23,6 +25,27 @@ import { LoadingState, Notice, roleLabel } from './ui.jsx';
 
 const staffRoles = ['system_admin', 'mdrrmo', 'bfp_officer', 'alert_operator'];
 const alertRoles = ['system_admin', 'mdrrmo', 'alert_operator'];
+
+function unreadAlertContent(alerts) {
+    const content = document.createElement('div');
+    const description = document.createElement('p');
+    const list = document.createElement('div');
+
+    content.className = 'swal-advisory-content';
+    description.textContent = 'Select an advisory to read it. Opening one marks it as read.';
+    list.className = 'swal-advisory-list';
+
+    alerts.forEach((alert) => {
+        const link = document.createElement('a');
+        link.href = `/my-alerts/${encodeURIComponent(alert.id)}`;
+        link.textContent = alert.title;
+        list.append(link);
+    });
+
+    content.append(description, list);
+
+    return content;
+}
 
 function Navigation({ user, onLogout }) {
     const isResident = user.role === 'resident';
@@ -154,6 +177,56 @@ export default function App() {
             })
             .finally(() => setCheckingAuth(false));
     }, []);
+
+    useEffect(() => {
+        if (user?.role !== 'resident') {
+            return undefined;
+        }
+
+        let isCurrent = true;
+
+        async function showUnreadAlerts() {
+            try {
+                const status = await api('/my/alerts/status');
+                const alerts = status.alerts ?? [];
+                const unreadCount = Number(status.unread_count ?? alerts.length);
+
+                if (!isCurrent || unreadCount <= 0 || alerts.length === 0) {
+                    return;
+                }
+
+                const result = await Swal.fire({
+                    icon: 'info',
+                    title: `${unreadCount} unread community ${unreadCount === 1 ? 'advisory' : 'advisories'}`,
+                    html: unreadAlertContent(alerts),
+                    showCancelButton: true,
+                    confirmButtonText: 'View all advisories',
+                    cancelButtonText: 'Close for now',
+                    confirmButtonColor: '#1d5b45',
+                });
+
+                if (isCurrent && result.isConfirmed) {
+                    window.location.assign('/my-alerts');
+                }
+            } catch (error) {
+                if (isCurrent) {
+                    await Swal.fire({
+                        icon: 'error',
+                        title: 'Unable to check notifications',
+                        text: error.message,
+                        confirmButtonColor: '#1d5b45',
+                    });
+                }
+            }
+        }
+
+        showUnreadAlerts();
+
+        return () => {
+            isCurrent = false;
+            Swal.close();
+        };
+    }, [user?.id, user?.role]);
 
     async function signOut() {
         try {

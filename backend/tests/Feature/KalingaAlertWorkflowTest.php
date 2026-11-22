@@ -121,7 +121,7 @@ class KalingaAlertWorkflowTest extends TestCase
         $this->assertTrue(Hash::check('NewResidentPass456', $resident->fresh()->password));
     }
 
-    public function test_published_alerts_are_only_available_to_matched_residents(): void
+    public function test_published_alerts_are_available_to_all_active_residents(): void
     {
         $this->travelTo(CarbonImmutable::parse('2026-10-27 12:00:00', 'UTC'));
 
@@ -183,10 +183,10 @@ class KalingaAlertWorkflowTest extends TestCase
             'starts_at' => '2026-10-27 12:00:00',
             'published_at' => '2026-10-27 12:00:00',
         ]);
-        $this->assertDatabaseCount('alert_recipients', 2);
+        $this->assertDatabaseCount('alert_recipients', 3);
         $this->assertDatabaseHas('alert_recipients', ['alert_id' => $alert->id, 'user_id' => $barangayResident->id]);
         $this->assertDatabaseHas('alert_recipients', ['alert_id' => $alert->id, 'user_id' => $coordinateResident->id]);
-        $this->assertDatabaseMissing('alert_recipients', ['alert_id' => $alert->id, 'user_id' => $outsideResident->id]);
+        $this->assertDatabaseHas('alert_recipients', ['alert_id' => $alert->id, 'user_id' => $outsideResident->id]);
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'alert.published',
             'subject_id' => $alert->id,
@@ -209,14 +209,18 @@ class KalingaAlertWorkflowTest extends TestCase
             ->get(route('resident.alerts.status'))
             ->assertOk()
             ->assertJson([
-                'active_alert_count' => 0,
-                'unread_count' => 0,
-                'alerts' => [],
+                'active_alert_count' => 1,
+                'unread_count' => 1,
+                'alerts' => [[
+                    'id' => $alert->id,
+                    'title' => 'Verified fire advisory',
+                    'url' => route('resident.alerts.show', $alert),
+                ]],
             ]);
 
         $this->actingAs($outsideResident)
             ->get(route('resident.alerts.show', $alert))
-            ->assertNotFound();
+            ->assertRedirect(config('services.frontend.url').'/my-alerts/'.$alert->id);
 
         $this->actingAs($barangayResident)
             ->get(route('resident.alerts.show', $alert))
@@ -420,6 +424,8 @@ class KalingaAlertWorkflowTest extends TestCase
             'barangay' => 'Poblacion',
             'classification' => 'Flood-prone',
             'is_active' => '1',
+            'latitude' => 12.75,
+            'longitude' => 121.35,
             'boundary' => json_encode([
                 'type' => 'Polygon',
                 'coordinates' => [[[121.3, 12.7], [121.4, 12.7], [121.4, 12.8], [121.3, 12.8]]],

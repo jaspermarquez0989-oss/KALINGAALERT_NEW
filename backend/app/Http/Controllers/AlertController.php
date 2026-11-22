@@ -69,6 +69,7 @@ class AlertController extends Controller
                 'message' => $validated['message'],
                 'safety_instructions' => $validated['safety_instructions'],
                 'severity' => $validated['severity'],
+                'intensity' => $validated['intensity'] ?? 3,
                 'status' => Alert::STATUS_DRAFT,
                 'starts_at' => $validated['starts_at'],
                 'ends_at' => $validated['ends_at'] ?? null,
@@ -78,6 +79,8 @@ class AlertController extends Controller
 
             $audit->record($request->user(), 'alert.drafted', $alert, [
                 'title' => $alert->title,
+                'severity' => $alert->severity,
+                'intensity' => $alert->intensity,
                 'risk_area_ids' => $validated['risk_area_ids'],
             ]);
 
@@ -112,6 +115,7 @@ class AlertController extends Controller
                 'message' => $request->input('message', $alert->message),
                 'safety_instructions' => $request->input('safety_instructions', $alert->safety_instructions),
                 'severity' => $request->input('severity', $alert->severity),
+                'intensity' => $request->input('intensity', $alert->intensity),
                 'starts_at' => $request->input('starts_at', $alert->starts_at?->toIso8601String()),
                 'ends_at' => $request->input('ends_at', $alert->ends_at?->toIso8601String()),
                 'risk_area_ids' => $request->input('risk_area_ids', $alert->riskAreas->modelKeys()),
@@ -128,6 +132,7 @@ class AlertController extends Controller
                 'message' => $validated['message'],
                 'safety_instructions' => $validated['safety_instructions'],
                 'severity' => $validated['severity'],
+                'intensity' => $validated['intensity'] ?? $alert->intensity,
                 'starts_at' => $validated['starts_at'],
                 'ends_at' => $validated['ends_at'] ?? null,
                 'status' => Alert::STATUS_DRAFT,
@@ -137,6 +142,8 @@ class AlertController extends Controller
             $alert->riskAreas()->sync($validated['risk_area_ids']);
             $audit->record($request->user(), 'alert.revised', $alert, [
                 'title' => $alert->title,
+                'severity' => $alert->severity,
+                'intensity' => $alert->intensity,
                 'approval_reset' => $wasApproved,
                 'risk_area_ids' => $validated['risk_area_ids'],
             ]);
@@ -197,12 +204,12 @@ class AlertController extends Controller
 
         if ($this->isApiRequest($request)) {
             return response()->json([
-                'message' => 'Alert approved. An authorized operator can now publish it to matched residents.',
+                'message' => 'Alert approved. An authorized operator can now publish it to all residents.',
                 'data' => AlertResource::make($alert->fresh()->load(['source', 'riskAreas', 'creator', 'approver'])),
             ]);
         }
 
-        return back()->with('status', 'Alert approved. An authorized operator can now publish it to matched residents.');
+        return back()->with('status', 'Alert approved. An authorized operator can now publish it to all residents.');
     }
 
     public function publish(
@@ -228,7 +235,7 @@ class AlertController extends Controller
                 abort(409, 'At least one selected vulnerable area must still be active.');
             }
 
-            $residents = $matcher->matchResidents($areas);
+            $residents = $matcher->allActiveResidents();
             $now = now();
 
             $lockedAlert->update([
@@ -245,6 +252,8 @@ class AlertController extends Controller
                         'sitio' => $area->sitio,
                         'classification' => $area->classification,
                         'boundary' => $area->boundary,
+                        'latitude' => $area->latitude,
+                        'longitude' => $area->longitude,
                     ],
                     'created_at' => $now,
                     'updated_at' => $now,
@@ -266,6 +275,7 @@ class AlertController extends Controller
 
             $audit->record($request->user(), 'alert.published', $lockedAlert, [
                 'recipient_count' => $residents->count(),
+                'delivery_scope' => 'all_active_residents',
                 'risk_area_ids' => $areas->modelKeys(),
                 'starts_at' => $now->toIso8601String(),
             ]);
@@ -274,10 +284,8 @@ class AlertController extends Controller
         });
 
         $message = $recipientCount === 0
-            ? 'Alert published. No registered resident locations matched the selected coverage.'
-            : ($this->isApiRequest($request)
-                ? "Alert published to {$recipientCount} matched resident account(s)."
-                : "Alert published to {$recipientCount} matched resident account(s) in the web application.");
+            ? 'Alert published. No active resident accounts are currently registered.'
+            : "Alert published to {$recipientCount} resident account(s).";
 
         if ($this->isApiRequest($request)) {
             return response()->json([
@@ -361,8 +369,10 @@ class AlertController extends Controller
         return back()->with('status', 'Alert '.$validated['action'].'.');
     }
 
-    public function myAlerts(Request $request): AnonymousResourceCollection
+    public function myAlerts(Request $request, RecipientMatcher $matcher): AnonymousResourceCollection
     {
+        $matcher->deliverActiveAlertsToResident($request->user());
+
         $recipients = AlertRecipient::query()
             ->where('user_id', $request->user()->id)
             ->whereHas('alert', fn (Builder $query) => $query->currentlyActive())
@@ -373,8 +383,10 @@ class AlertController extends Controller
         return AlertRecipientResource::collection($recipients);
     }
 
-    public function residentStatus(Request $request): JsonResponse
+    public function residentStatus(Request $request, RecipientMatcher $matcher): JsonResponse
     {
+        $matcher->deliverActiveAlertsToResident($request->user());
+
         $activeRecipients = AlertRecipient::query()
             ->where('user_id', $request->user()->id)
             ->whereHas('alert', fn (Builder $query) => $query->currentlyActive());
@@ -435,6 +447,7 @@ class AlertController extends Controller
             'message' => ['required', 'string', 'max:5000'],
             'safety_instructions' => ['required', 'string', 'max:5000'],
             'severity' => ['required', Rule::in(['advisory', 'watch', 'warning', 'emergency'])],
+            'intensity' => ['sometimes', 'required', 'integer', 'between:1,5'],
             'starts_at' => ['required', 'date'],
             'ends_at' => ['nullable', 'date', 'after:starts_at'],
             'risk_area_ids' => ['required', 'array', 'min:1'],

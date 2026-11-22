@@ -29,6 +29,7 @@ class Alert extends Model
         'message',
         'safety_instructions',
         'severity',
+        'intensity',
         'status',
         'starts_at',
         'ends_at',
@@ -42,6 +43,7 @@ class Alert extends Model
     protected function casts(): array
     {
         return [
+            'intensity' => 'integer',
             'starts_at' => 'datetime',
             'ends_at' => 'datetime',
             'approved_at' => 'datetime',

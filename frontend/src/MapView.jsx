@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import bongabongBoundary from './data/bongabong-boundary.json';
+import { formatCoordinatePair } from './coordinates.js';
+import { heatPaletteForScore } from './intensity.js';
 
 const emptyAreas = [];
 
@@ -13,6 +15,14 @@ function popupContent(area) {
     classification.textContent = `Risk area · ${area.classification}`;
     root.append(title, location, classification);
 
+    if (area.latitude !== null && area.latitude !== undefined
+        && area.longitude !== null && area.longitude !== undefined
+        && Number.isFinite(Number(area.latitude)) && Number.isFinite(Number(area.longitude))) {
+        const coordinates = document.createElement('div');
+        coordinates.textContent = `Center: ${formatCoordinatePair(area.latitude, area.longitude)}`;
+        root.append(coordinates);
+    }
+
     for (const alert of area.alerts ?? []) {
         const detail = document.createElement('section');
         const heading = document.createElement('strong');
@@ -20,6 +30,12 @@ function popupContent(area) {
         heading.textContent = `${alert.title} · ${alert.severity}`;
         message.textContent = alert.message;
         detail.append(heading, message);
+
+        if (alert.intensity !== null && alert.intensity !== undefined) {
+            const intensity = document.createElement('div');
+            intensity.textContent = `Advisory intensity: ${alert.intensity}/5`;
+            detail.append(intensity);
+        }
 
         if (alert.safety_instructions) {
             const instructions = document.createElement('p');
@@ -33,14 +49,63 @@ function popupContent(area) {
     return root;
 }
 
-export default function MapView({ areas = emptyAreas, boundary, editable = false, onBoundaryChange }) {
+const severityScores = { advisory: 0.3, watch: 0.55, warning: 0.78, emergency: 1 };
+
+function heatForArea(area) {
+    return Math.max(0.2, ...(area.alerts ?? []).map((alert) => {
+        const intensity = Number(alert.intensity);
+        if (Number.isInteger(intensity) && intensity >= 1 && intensity <= 5) {
+            return intensity / 5;
+        }
+
+        return severityScores[alert.severity] ?? 0.2;
+    }));
+}
+
+function boundaryCenter(ring) {
+    if (!ring.length) return null;
+    const longitudes = ring.map(([longitude]) => longitude);
+    const latitudes = ring.map(([, latitude]) => latitude);
+    return [
+        (Math.min(...latitudes) + Math.max(...latitudes)) / 2,
+        (Math.min(...longitudes) + Math.max(...longitudes)) / 2,
+    ];
+}
+
+function areaCenter(area, ring) {
+    if (area.latitude !== null && area.latitude !== undefined
+        && area.longitude !== null && area.longitude !== undefined
+        && Number.isFinite(Number(area.latitude)) && Number.isFinite(Number(area.longitude))) {
+        return [Number(area.latitude), Number(area.longitude)];
+    }
+
+    return boundaryCenter(ring);
+}
+
+export default function MapView({
+    areas = emptyAreas,
+    boundary,
+    editable = false,
+    latitude,
+    longitude,
+    onBoundaryChange,
+    onLocationChange,
+}) {
     const elementRef = useRef(null);
     const boundaryCallback = useRef(onBoundaryChange);
+    const locationCallback = useRef(onLocationChange);
+    const locationRef = useRef({ latitude, longitude });
     const initialBoundary = useRef(boundary);
     const [drawing, setDrawing] = useState(false);
     const [pointCount, setPointCount] = useState(0);
     const [mapError, setMapError] = useState('');
     boundaryCallback.current = onBoundaryChange;
+    locationCallback.current = onLocationChange;
+    locationRef.current = { latitude, longitude };
+
+    useEffect(() => {
+        elementRef.current?.__setCenterLocation?.(latitude, longitude);
+    }, [latitude, longitude]);
 
     useEffect(() => {
         const element = elementRef.current;
@@ -86,8 +151,43 @@ export default function MapView({ areas = emptyAreas, boundary, editable = false
             const markers = [];
             let preview = null;
             let savedPolygon = null;
+            let centerMarker = null;
             let isDrawing = false;
             const ring = initialBoundary.current?.coordinates?.[0] ?? [];
+
+            const setCenterLocation = (lat, lng) => {
+                if (lat === '' || lat === null || lat === undefined || lng === '' || lng === null || lng === undefined) {
+                    if (centerMarker) map.removeLayer(centerMarker);
+                    centerMarker = null;
+                    return;
+                }
+
+                const coordinates = [Number(lat), Number(lng)];
+                if (!coordinates.every(Number.isFinite)
+                    || coordinates[0] < -90
+                    || coordinates[0] > 90
+                    || coordinates[1] < -180
+                    || coordinates[1] > 180) {
+                    if (centerMarker) map.removeLayer(centerMarker);
+                    centerMarker = null;
+                    return;
+                }
+
+                if (centerMarker) {
+                    centerMarker.setLatLng(coordinates);
+                } else {
+                    centerMarker = L.circleMarker(coordinates, {
+                        radius: 7,
+                        color: '#fff',
+                        weight: 2,
+                        fillColor: '#1d5b45',
+                        fillOpacity: 1,
+                    }).addTo(map);
+                }
+
+                map.setView(coordinates, Math.max(map.getZoom(), 15), { animate: false });
+            };
+            element.__setCenterLocation = setCenterLocation;
 
             if (initialBoundary.current?.type === 'Polygon' && ring.length >= 4) {
                 savedPolygon = L.polygon(
@@ -97,8 +197,15 @@ export default function MapView({ areas = emptyAreas, boundary, editable = false
                 map.fitBounds(savedPolygon.getBounds().pad(0.2), { padding: [25, 25] });
             }
 
+            setCenterLocation(locationRef.current.latitude, locationRef.current.longitude);
+
             map.on('click', (event) => {
                 if (!isDrawing) {
+                    setCenterLocation(event.latlng.lat, event.latlng.lng);
+                    locationCallback.current?.({
+                        latitude: event.latlng.lat,
+                        longitude: event.latlng.lng,
+                    });
                     return;
                 }
 
@@ -147,6 +254,8 @@ export default function MapView({ areas = emptyAreas, boundary, editable = false
 
             for (const area of areas) {
                 const ring = area.boundary?.coordinates?.[0] ?? [];
+                const intensity = heatForArea(area);
+                const palette = heatPaletteForScore(intensity);
 
                 if (area.boundary?.type !== 'Polygon' || ring.length < 4) {
                     continue;
@@ -154,10 +263,23 @@ export default function MapView({ areas = emptyAreas, boundary, editable = false
 
                 const polygon = L.polygon(
                     ring.map(([longitude, latitude]) => [latitude, longitude]),
-                    { color: area.alerts?.length ? '#c66a44' : '#477958', fillOpacity: area.alerts?.length ? 0.3 : 0.18 },
+                    { color: palette.fill, fillColor: palette.fill, fillOpacity: 0.35, weight: 2 },
                 ).addTo(map);
                 polygon.bindPopup(popupContent(area));
                 polygons.push(polygon);
+
+                const center = areaCenter(area, ring);
+
+                if (center) {
+                    const diameter = Math.round(130 + intensity * 120);
+                    const icon = L.divIcon({
+                        className: 'heatmap-marker',
+                        html: `<span class="heatmap-spot" style="--spot-size:${diameter}px;--spot-color:${palette.spot}"></span>`,
+                        iconSize: [diameter, diameter],
+                        iconAnchor: [diameter / 2, diameter / 2],
+                    });
+                    L.marker(center, { icon, interactive: false, keyboard: false, zIndexOffset: -100 }).addTo(map);
+                }
             }
 
             if (polygons.length) {
@@ -171,6 +293,7 @@ export default function MapView({ areas = emptyAreas, boundary, editable = false
             map.remove();
             delete element.__startDrawing;
             delete element.__finishDrawing;
+            delete element.__setCenterLocation;
         };
     }, [areas, editable]);
 
@@ -178,7 +301,7 @@ export default function MapView({ areas = emptyAreas, boundary, editable = false
         <div className="map-component">
             {editable && (
                 <div className="map-toolbar">
-                    <span className="field-hint">Click at least three points inside Bongabong to outline the coverage.</span>
+                    <span className="field-hint">Click to set the area center; start drawing to outline the boundary.</span>
                     <div className="inline-actions">
                         <button className="button button-muted button-small" type="button" onClick={() => {
                             elementRef.current?.__startDrawing?.();
@@ -189,6 +312,17 @@ export default function MapView({ areas = emptyAreas, boundary, editable = false
                             setDrawing(false);
                         }}>Finish boundary</button>
                     </div>
+                </div>
+            )}
+            {!editable && (
+                <div className="heatmap-legend" aria-label="Advisory intensity scale from 1 to 5">
+                    <span>Advisory intensity</span>
+                    {[1, 2, 3, 4, 5].map((level) => (
+                        <span className="heatmap-legend-step" key={level}>
+                            <i style={{ backgroundColor: heatPaletteForScore(level / 5).fill }} />
+                            {level}
+                        </span>
+                    ))}
                 </div>
             )}
             {mapError && <p className="map-error" role="status">{mapError}</p>}
