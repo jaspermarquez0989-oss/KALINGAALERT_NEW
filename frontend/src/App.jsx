@@ -228,6 +228,7 @@ export default function App() {
         };
     }, [user?.id, user?.role]);
 
+    
     async function signOut() {
         try {
             await api('/auth/logout', { method: 'POST' });
