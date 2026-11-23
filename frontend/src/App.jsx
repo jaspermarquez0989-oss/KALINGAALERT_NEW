@@ -50,28 +50,38 @@ function unreadAlertContent(alerts) {
 function Navigation({ user, onLogout }) {
     const isResident = user.role === 'resident';
     const isAdmin = user.role === 'system_admin';
+    const currentPath = window.location.pathname.replace(/\/+$/, '') || '/';
+    const isActive = (href) => {
+        if (currentPath === href) return true;
+        if (href === '/profile' || href === '/dashboard') return false;
+        if (href === '/staff') return /^\/staff\/(?:create)?$/.test(currentPath);
+        return currentPath.startsWith(`${href}/`);
+    };
 
     return (
         <aside className="sidebar">
-            <a className="brand" href="/dashboard">
-                <span className="brand-mark">K</span>
-                <span>Kalinga<span className="brand-light">Alert</span></span>
-            </a>
+            <div className="sidebar-mobile-header">
+                <a className="brand" href="/dashboard">
+                    <span className="brand-mark">K</span>
+                    <span>Kalinga<span className="brand-light">Alert</span></span>
+                </a>
+                <button className="mobile-signout" onClick={onLogout} type="button" aria-label="Sign out">Sign out</button>
+            </div>
             <div className="sidebar-label">WORKSPACE</div>
-            <nav className="side-nav">
-                <a href="/dashboard">Overview</a>
+            <nav className="side-nav" aria-label="Primary navigation">
+                <a className={isActive('/dashboard') ? 'active' : ''} aria-current={isActive('/dashboard') ? 'page' : undefined} href="/dashboard">Overview</a>
                 {isResident ? (
-                    <a href="/my-alerts">My alerts</a>
+                    <a className={isActive('/my-alerts') ? 'active' : ''} aria-current={isActive('/my-alerts') ? 'page' : undefined} href="/my-alerts">My alerts</a>
                 ) : (
                     <>
-                        {alertRoles.includes(user.role) && <a href="/alerts">Advisories</a>}
-                        {staffRoles.includes(user.role) && <a href="/hazard-sources">Official sources</a>}
-                        {staffRoles.includes(user.role) && <a href="/risk-areas">Risk areas</a>}
-                        {isAdmin && <a href="/staff">Staff accounts</a>}
-                        {isAdmin && <a href="/staff/audit">Audit history</a>}
+                        {alertRoles.includes(user.role) && <a className={isActive('/alerts') ? 'active' : ''} aria-current={isActive('/alerts') ? 'page' : undefined} href="/alerts">Advisories</a>}
+                        {staffRoles.includes(user.role) && <a className={isActive('/hazard-sources') ? 'active' : ''} aria-current={isActive('/hazard-sources') ? 'page' : undefined} href="/hazard-sources">Official sources</a>}
+                        {staffRoles.includes(user.role) && <a className={isActive('/risk-areas') ? 'active' : ''} aria-current={isActive('/risk-areas') ? 'page' : undefined} href="/risk-areas">Risk areas</a>}
+                        {isAdmin && <a className={isActive('/staff') ? 'active' : ''} aria-current={isActive('/staff') ? 'page' : undefined} href="/staff">Staff accounts</a>}
+                        {isAdmin && <a className={isActive('/staff/audit') ? 'active' : ''} aria-current={isActive('/staff/audit') ? 'page' : undefined} href="/staff/audit">Audit history</a>}
                     </>
                 )}
-                <a href="/profile">My profile</a>
+                <a className={isActive('/profile') ? 'active' : ''} aria-current={isActive('/profile') ? 'page' : undefined} href="/profile">My profile</a>
             </nav>
             <div className="sidebar-footer">
                 <div className="user-chip">
@@ -108,7 +118,7 @@ function GuestFrame({ children }) {
                     <span className="brand-mark">K</span>
                     <span>Kalinga<span className="brand-light">Alert</span></span>
                 </a>
-                <nav><a href="/login">Sign in</a><a className="button button-small" href="/register">Resident registration</a></nav>
+                <nav aria-label="Guest navigation"><a href="/login">Sign in</a><a className="button button-small" href="/register"><span className="guest-register-full">Resident registration</span><span className="guest-register-short">Register</span></a></nav>
             </header>
             {children}
             <footer className="guest-footer">KalingaAlert · Bongabong, Oriental Mindoro</footer>
@@ -183,7 +193,12 @@ export default function App() {
             return undefined;
         }
 
+        if (/^\/my-alerts(?:\/|$)/.test(window.location.pathname)) {
+            return undefined;
+        }
+
         let isCurrent = true;
+        const dismissalKey = `kalinga_alert_prompt_dismissed_${user.id}`;
 
         async function showUnreadAlerts() {
             try {
@@ -191,7 +206,16 @@ export default function App() {
                 const alerts = status.alerts ?? [];
                 const unreadCount = Number(status.unread_count ?? alerts.length);
 
-                if (!isCurrent || unreadCount <= 0 || alerts.length === 0) {
+                if (!isCurrent) {
+                    return;
+                }
+
+                if (unreadCount <= 0 || alerts.length === 0) {
+                    sessionStorage.removeItem(dismissalKey);
+                    return;
+                }
+
+                if (sessionStorage.getItem(dismissalKey) === 'true') {
                     return;
                 }
 
@@ -206,6 +230,7 @@ export default function App() {
                 });
 
                 if (isCurrent && result.isConfirmed) {
+                    sessionStorage.setItem(dismissalKey, 'true');
                     window.location.assign('/my-alerts');
                 }
             } catch (error) {

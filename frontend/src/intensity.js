@@ -17,5 +17,5 @@ export function heatPaletteForScore(score) {
     const green = (color >> 8) & 255;
     const blue = color & 255;
 
-    return { fill, spot: `rgba(${red}, ${green}, ${blue}, .58)` };
+    return { fill, spot: `rgba(${red}, ${green}, ${blue}, .5)` };
 }

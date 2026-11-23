@@ -184,10 +184,13 @@ class ApiV1Test extends TestCase
             'barangay' => 'Bongabong',
             'sitio' => 'Purok 1',
         ]);
+        $creatorToken = $this->tokenFor($creator);
+        $approverToken = $this->tokenFor($approver);
+        $this->clearJwtRequestState();
         $source = $this->makeVerifiedSource($sourceAuthor, $approver);
         $area = $this->makeRiskArea($approver);
 
-        $createResponse = $this->withToken($this->tokenFor($creator))->postJson('/api/v1/alerts', [
+        $createResponse = $this->withToken($creatorToken)->postJson('/api/v1/alerts', [
             'hazard_source_id' => $source->id,
             'title' => 'Community weather warning',
             'message' => 'Heavy rainfall may affect the community.',
@@ -211,7 +214,7 @@ class ApiV1Test extends TestCase
         ]);
         $this->assertDatabaseHas('alerts', ['id' => $alert->id, 'intensity' => 4]);
 
-        $this->withToken($this->tokenFor($creator))
+        $this->withToken($creatorToken)
             ->patchJson("/api/v1/alerts/{$alert->id}", [
                 'title' => 'Updated community weather warning',
                 'intensity' => 5,
@@ -223,12 +226,14 @@ class ApiV1Test extends TestCase
 
         $alert->refresh();
 
-        $this->withToken($this->tokenFor($approver))
+        $this->clearJwtRequestState();
+        $this->withToken($approverToken)
             ->patchJson("/api/v1/alerts/{$alert->id}/approve")
             ->assertOk()
             ->assertJsonPath('data.status', Alert::STATUS_APPROVED);
 
-        $this->withToken($this->tokenFor($creator))
+        $this->clearJwtRequestState();
+        $this->withToken($approverToken)
             ->patchJson("/api/v1/alerts/{$alert->id}/publish")
             ->assertOk()
             ->assertJsonPath('data.status', Alert::STATUS_PUBLISHED);
@@ -239,12 +244,13 @@ class ApiV1Test extends TestCase
         ]);
         $area->update(['name' => 'Updated area name']);
 
-        $this->withToken($this->tokenFor($creator))
+        $this->withToken($creatorToken)
             ->getJson('/api/v1/alerts?status=published&severity=warning&sort=title&direction=asc')
             ->assertOk()
-            ->assertJsonPath('data.0.id', $alert->id);
+            ->assertJsonPath('data.0.id', $alert->id)
+            ->assertJsonPath('data.0.risk_areas.0.id', $area->id);
 
-        $this->withToken($this->tokenFor($creator))
+        $this->withToken($creatorToken)
             ->getJson('/api/v1/alerts?sort=created_at%20DESC')
             ->assertUnprocessable();
 
@@ -261,6 +267,112 @@ class ApiV1Test extends TestCase
             ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['intensity']);
+
+        $alert->update(['ends_at' => now()->subMinute()]);
+
+        $revisionResponse = $this->withToken($creatorToken)
+            ->postJson("/api/v1/alerts/{$alert->id}/revise")
+            ->assertCreated()
+            ->assertJsonPath('data.status', Alert::STATUS_DRAFT)
+            ->assertJsonPath('data.intensity', 5)
+            ->assertJsonPath('data.ends_at', null);
+
+        $revision = Alert::query()->findOrFail($revisionResponse->json('data.id'));
+
+        $this->assertDatabaseHas('alerts', [
+            'id' => $revision->id,
+            'supersedes_id' => $alert->id,
+            'status' => Alert::STATUS_DRAFT,
+            'intensity' => 5,
+            'ends_at' => null,
+        ]);
+
+        $this->clearJwtRequestState();
+        $this->withToken($approverToken)
+            ->patchJson("/api/v1/alerts/{$revision->id}/approve")
+            ->assertOk()
+            ->assertJsonPath('data.status', Alert::STATUS_APPROVED);
+
+        $this->clearJwtRequestState();
+        $this->withToken($creatorToken)
+            ->patchJson("/api/v1/alerts/{$revision->id}/publish")
+            ->assertOk()
+            ->assertJsonPath('data.status', Alert::STATUS_PUBLISHED);
+
+        $this->assertDatabaseHas('alerts', [
+            'id' => $alert->id,
+            'status' => Alert::STATUS_EXPIRED,
+        ]);
+    }
+
+    public function test_only_system_administrators_and_mdrrmo_can_publish_a_draft_immediately(): void
+    {
+        $creator = $this->makeUser(UserRole::AlertOperator->value, ['email' => 'operator@example.com']);
+        $publisher = $this->makeUser(UserRole::MdrrmoPersonnel->value, ['email' => 'manager@example.com']);
+        $administrator = $this->makeUser(UserRole::SystemAdministrator->value, ['email' => 'admin@example.com']);
+        $sourceAuthor = $this->makeUser(UserRole::BfpOfficer->value, ['email' => 'bfp@example.com']);
+        $resident = $this->makeUser(UserRole::CommunityResident->value, [
+            'email' => 'recipient@example.com',
+            'barangay' => 'Bongabong',
+            'sitio' => 'Purok 1',
+        ]);
+        $creatorToken = $this->tokenFor($creator);
+        $publisherToken = $this->tokenFor($publisher);
+        $administratorToken = $this->tokenFor($administrator);
+        $this->clearJwtRequestState();
+        $source = $this->makeVerifiedSource($sourceAuthor, $publisher);
+        $area = $this->makeRiskArea($publisher);
+
+        $alert = $this->withToken($creatorToken)->postJson('/api/v1/alerts', [
+            'hazard_source_id' => $source->id,
+            'title' => 'Immediate publishing test',
+            'message' => 'A test advisory.',
+            'safety_instructions' => 'Follow local guidance.',
+            'severity' => 'warning',
+            'starts_at' => now()->toIso8601String(),
+            'risk_area_ids' => [$area->id],
+        ])
+            ->assertCreated()
+            ->json('data');
+
+        $this->withToken($creatorToken)
+            ->patchJson("/api/v1/alerts/{$alert['id']}/publish")
+            ->assertStatus(409);
+
+        $this->clearJwtRequestState();
+        $this->withToken($publisherToken)
+            ->patchJson("/api/v1/alerts/{$alert['id']}/publish")
+            ->assertOk()
+            ->assertJsonPath('data.status', Alert::STATUS_PUBLISHED);
+
+        $this->assertDatabaseHas('alerts', [
+            'id' => $alert['id'],
+            'status' => Alert::STATUS_PUBLISHED,
+            'approved_by' => null,
+        ]);
+        $this->assertDatabaseHas('alert_recipients', [
+            'alert_id' => $alert['id'],
+            'user_id' => $resident->id,
+        ]);
+
+        $this->clearJwtRequestState();
+        $secondAlert = $this->withToken($creatorToken)->postJson('/api/v1/alerts', [
+            'hazard_source_id' => $source->id,
+            'title' => 'Immediate publishing test by admin',
+            'message' => 'A second test advisory.',
+            'safety_instructions' => 'Follow local guidance.',
+            'severity' => 'warning',
+            'starts_at' => now()->toIso8601String(),
+            'risk_area_ids' => [$area->id],
+        ])
+            ->assertCreated()
+            ->json('data');
+
+        $this->clearJwtRequestState();
+        $this->withToken($administratorToken)
+            ->patchJson("/api/v1/alerts/{$secondAlert['id']}/publish")
+            ->assertOk()
+            ->assertJsonPath('data.status', Alert::STATUS_PUBLISHED);
     }
 
     public function test_resident_api_exposes_only_matched_alerts_and_marks_opened_alerts_read(): void

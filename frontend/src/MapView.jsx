@@ -25,8 +25,10 @@ function popupContent(area) {
 
     for (const alert of area.alerts ?? []) {
         const detail = document.createElement('section');
+        detail.className = 'map-alert-details';
         const heading = document.createElement('strong');
         const message = document.createElement('p');
+        message.className = 'map-alert-message';
         heading.textContent = `${alert.title} · ${alert.severity}`;
         message.textContent = alert.message;
         detail.append(heading, message);
@@ -38,8 +40,29 @@ function popupContent(area) {
         }
 
         if (alert.safety_instructions) {
-            const instructions = document.createElement('p');
-            instructions.textContent = `Safety instructions: ${alert.safety_instructions}`;
+            const instructions = document.createElement('div');
+            const instructionsHeading = document.createElement('strong');
+            const instructionsText = document.createElement('div');
+            const instructionText = alert.safety_instructions.trim();
+            const instructionSteps = instructionText.split(/(?=\s+\d+\.\s+)/).map((step) => step.trim()).filter(Boolean);
+
+            instructions.className = 'map-alert-instructions';
+            instructionsHeading.textContent = 'Safety instructions';
+            instructions.append(instructionsHeading);
+
+            if (/^\d+\.\s/.test(instructionText) && instructionSteps.length > 1) {
+                const list = document.createElement('ol');
+                instructionSteps.forEach((step) => {
+                    const item = document.createElement('li');
+                    item.textContent = step.replace(/^\d+\.\s*/, '');
+                    list.append(item);
+                });
+                instructionsText.append(list);
+            } else {
+                instructionsText.textContent = instructionText;
+            }
+
+            instructions.append(instructionsText);
             detail.append(instructions);
         }
 
@@ -263,9 +286,12 @@ export default function MapView({
 
                 const polygon = L.polygon(
                     ring.map(([longitude, latitude]) => [latitude, longitude]),
-                    { color: palette.fill, fillColor: palette.fill, fillOpacity: 0.35, weight: 2 },
+                    { color: palette.fill, fillColor: palette.fill, fillOpacity: 0.24, weight: 2 },
                 ).addTo(map);
-                polygon.bindPopup(popupContent(area));
+                polygon.bindPopup(popupContent(area), {
+                    maxWidth: Math.min(420, Math.max(240, window.innerWidth - 40)),
+                    maxHeight: 320,
+                });
                 polygons.push(polygon);
 
                 const center = areaCenter(area, ring);

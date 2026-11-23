@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\UserRole;
 use App\Http\Resources\Api\V1\AlertRecipientResource;
 use App\Http\Resources\Api\V1\AlertResource;
 use App\Models\Alert;
@@ -24,7 +25,7 @@ class AlertController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         $query = Alert::query()
-            ->with(['source', 'creator', 'approver'])
+            ->with(['source', 'creator', 'approver', 'riskAreas'])
             ->withCount('recipients');
 
         $filters = $request->validate([
@@ -220,13 +221,22 @@ class AlertController extends Controller
     ): RedirectResponse|JsonResponse {
         $recipientCount = DB::transaction(function () use ($request, $alert, $matcher, $audit): int {
             $lockedAlert = Alert::query()->whereKey($alert->id)->lockForUpdate()->firstOrFail();
+            $canPublishImmediately = in_array($request->user()->role, [
+                UserRole::SystemAdministrator->value,
+                UserRole::MdrrmoPersonnel->value,
+            ], true);
+            $publishingDraft = $lockedAlert->status === Alert::STATUS_DRAFT && $canPublishImmediately;
 
-            if ($lockedAlert->status !== Alert::STATUS_APPROVED) {
-                abort(409, 'Only an approved alert can be published.');
+            if ($lockedAlert->status !== Alert::STATUS_APPROVED && ! $publishingDraft) {
+                abort(409, 'Only approved alerts can be published unless you are a system administrator or MDRRMO personnel publishing a draft immediately.');
             }
 
-            if ($lockedAlert->approved_by === $request->user()->id) {
+            if (! $publishingDraft && $lockedAlert->approved_by === $request->user()->id && ! $canPublishImmediately) {
                 abort(403, 'The approver cannot publish their own approval.');
+            }
+
+            if ($publishingDraft && ! $lockedAlert->source()->where('verification_status', 'verified')->exists()) {
+                abort(409, 'The official source must be verified before an alert can be published.');
             }
 
             $areas = $lockedAlert->riskAreas()->where('is_active', true)->get();
@@ -276,6 +286,7 @@ class AlertController extends Controller
             $audit->record($request->user(), 'alert.published', $lockedAlert, [
                 'recipient_count' => $residents->count(),
                 'delivery_scope' => 'all_active_residents',
+                'approval_bypassed' => $publishingDraft,
                 'risk_area_ids' => $areas->modelKeys(),
                 'starts_at' => $now->toIso8601String(),
             ]);
@@ -309,9 +320,10 @@ class AlertController extends Controller
                 'message' => $alert->message,
                 'safety_instructions' => $alert->safety_instructions,
                 'severity' => $alert->severity,
+                'intensity' => $alert->intensity,
                 'status' => Alert::STATUS_DRAFT,
                 'starts_at' => now(),
-                'ends_at' => $alert->ends_at,
+                'ends_at' => $alert->ends_at?->isFuture() ? $alert->ends_at : null,
                 'created_by' => $request->user()->id,
                 'supersedes_id' => $alert->id,
             ]);

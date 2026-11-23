@@ -74,9 +74,9 @@ function SeverityCard({ label, value, tone = '' }) {
     );
 }
 
-function AlertCard({ alert, href }) {
+function AlertCard({ alert, href, onClick }) {
     return (
-        <a className="alert-card" href={href}>
+        <a className="alert-card" href={href} onClick={onClick}>
             <div className="alert-card-top"><StatusBadge>{alert.severity}</StatusBadge><IntensityIndicator value={alert.intensity} /><StatusBadge>{alert.status}</StatusBadge></div>
             <h3>{alert.title}</h3>
             <p>{alert.message}</p>
@@ -214,9 +214,12 @@ export function RegisterPage({ onAuthenticated }) {
 }
 
 export function DashboardPage({ user }) {
+    const selectedAlertStorageKey = `kalinga_dashboard_selected_advisory_${user.id}`;
     const [data, setData] = useState(null);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(true);
+    const [publishedPage, setPublishedPage] = useState(1);
+    const [selectedDashboardAlertId, setSelectedDashboardAlertId] = useState(() => sessionStorage.getItem(selectedAlertStorageKey));
 
     useEffect(() => {
         let isCurrent = true;
@@ -234,7 +237,8 @@ export function DashboardPage({ user }) {
                         const areas = (coverageResponse.data ?? []).map((area) => ({
                             ...area,
                             alerts: alerts.filter((alert) => alert.risk_areas?.some((covered) => covered.id === area.id))
-                                .map(({ title, severity, intensity, message, safety_instructions }) => ({
+                                .map(({ id, title, severity, intensity, message, safety_instructions }) => ({
+                                    id,
                                     title,
                                     severity,
                                     intensity,
@@ -262,6 +266,7 @@ export function DashboardPage({ user }) {
                         alerts: alerts.filter((alert) => alert.status === 'published'
                             && alert.risk_areas?.some((covered) => covered.id === area.id))
                             .map((alert) => ({
+                                id: alert.id,
                                 title: alert.title,
                                 severity: alert.severity,
                                 intensity: alert.intensity,
@@ -285,6 +290,21 @@ export function DashboardPage({ user }) {
         };
     }, [user.role]);
 
+    useEffect(() => {
+        if (!data || !selectedDashboardAlertId) {
+            return;
+        }
+
+        const alerts = user.role === 'resident'
+            ? data.alerts
+            : (data.alerts ?? []).filter((alert) => alert.status === 'published');
+        const selectedAlertExists = alerts.some((alert) => String(alert.id) === selectedDashboardAlertId);
+        if (!selectedAlertExists) {
+            sessionStorage.removeItem(selectedAlertStorageKey);
+            setSelectedDashboardAlertId(null);
+        }
+    }, [data, selectedAlertStorageKey, selectedDashboardAlertId, user.role]);
+
     if (loading) return <LoadingState />;
     if (error) return <Notice>{error}</Notice>;
 
@@ -292,6 +312,22 @@ export function DashboardPage({ user }) {
     const activeAlerts = isResident
         ? data.alerts
         : (data.alerts ?? []).filter((alert) => alert.status === 'published');
+    const selectedAlert = activeAlerts.find((alert) => String(alert.id) === selectedDashboardAlertId);
+    const mapAreas = selectedAlert
+        ? data.areas
+            .filter((area) => area.alerts.some((alert) => String(alert.id) === selectedDashboardAlertId))
+            .map((area) => ({
+                ...area,
+                alerts: area.alerts.filter((alert) => String(alert.id) === selectedDashboardAlertId),
+            }))
+        : data.areas;
+    const pageSize = 4;
+    const pageCount = Math.max(1, Math.ceil(activeAlerts.length / pageSize));
+    const visibleAlerts = selectedAlert
+        ? [selectedAlert]
+        : isResident
+            ? activeAlerts.slice(0, pageSize)
+            : activeAlerts.slice((publishedPage - 1) * pageSize, publishedPage * pageSize);
 
     return (
         <>
@@ -303,11 +339,51 @@ export function DashboardPage({ user }) {
                 {!isResident && <SeverityCard label="Sources awaiting review" value={data.sources.filter((source) => source.verification_status === 'pending').length} />}
             </div>
             <div className={`content-grid dashboard-grid ${isResident ? 'resident-dashboard-grid' : ''}`}>
-                <Panel title={isResident ? 'Your latest advisories' : 'Published advisories'} action={<a className="text-link" href={isResident ? '/my-alerts' : '/alerts'}>View all</a>}>
+                <Panel
+                    title={selectedAlert ? 'Selected advisory' : (isResident ? 'Your latest advisories' : 'Published advisories')}
+                    action={(
+                        <div className="dashboard-panel-actions">
+                            {selectedAlert && <button className="text-button" onClick={() => {
+                                sessionStorage.removeItem(selectedAlertStorageKey);
+                                setSelectedDashboardAlertId(null);
+                                if (!isResident) setPublishedPage(1);
+                            }} type="button">Show latest</button>}
+                            <a className="text-link" href={isResident ? '/my-alerts' : '/alerts'}>View all</a>
+                        </div>
+                    )}
+                >
                     {activeAlerts.length === 0 ? <EmptyState title="No active advisories">We will show matched alerts here when available.</EmptyState> : (
-                        <div className="alert-list">{activeAlerts.slice(0, 4).map((alert) => (
-                            <AlertCard key={alert.id} alert={alert} href={isResident ? `/my-alerts/${alert.id}` : `/alerts/${alert.id}`} />
-                        ))}</div>
+                        <>
+                            <div className="alert-list">{visibleAlerts.map((alert) => (
+                                <AlertCard
+                                    key={alert.id}
+                                    alert={alert}
+                                    href={isResident ? `/my-alerts/${alert.id}` : `/alerts/${alert.id}`}
+                                    onClick={(event) => {
+                                        event.preventDefault();
+                                        sessionStorage.setItem(selectedAlertStorageKey, String(alert.id));
+                                        setSelectedDashboardAlertId(String(alert.id));
+                                    }}
+                                />
+                            ))}</div>
+                            {!isResident && pageCount > 1 && (
+                                <nav className="advisory-pagination" aria-label="Published advisory pages">
+                                    <button
+                                        aria-label="Previous page"
+                                        disabled={publishedPage === 1}
+                                        onClick={() => setPublishedPage((page) => Math.max(1, page - 1))}
+                                        type="button"
+                                    >‹</button>
+                                    <span aria-live="polite">Page {publishedPage} of {pageCount}</span>
+                                    <button
+                                        aria-label="Next page"
+                                        disabled={publishedPage === pageCount}
+                                        onClick={() => setPublishedPage((page) => Math.min(pageCount, page + 1))}
+                                        type="button"
+                                    >›</button>
+                                </nav>
+                            )}
+                        </>
                     )}
                 </Panel>
                 {!isResident && (
@@ -320,7 +396,7 @@ export function DashboardPage({ user }) {
             </div>
             <Panel title={isResident ? 'Community risk areas' : 'Mapped coverage'} className="map-panel">
                 {data.areas.length || isResident
-                    ? <MapView areas={data.areas.filter((area) => area.is_active)} />
+                    ? <MapView areas={mapAreas.filter((area) => area.is_active)} />
                     : <EmptyState title="No active mapped areas" />}
                 {isResident && <p className="muted">This map shows all active public risk areas and current advisory intensity. Your exact home location stays private.</p>}
                 {isResident && data.areas.length === 0 && <Notice tone="info">No active risk areas are currently mapped.</Notice>}
@@ -332,10 +408,28 @@ export function DashboardPage({ user }) {
 
 export function AlertsPage() {
     const { data, loading, error } = useApiData('/alerts?per_page=100');
+    const [revisionError, setRevisionError] = useState('');
+    const [revisingAlertId, setRevisingAlertId] = useState(null);
+
+    async function editPublishedAlert(alert) {
+        const confirmed = window.confirm('Create an editable replacement draft? The published advisory stays active until its replacement is published.');
+        if (!confirmed) return;
+
+        setRevisionError('');
+        setRevisingAlertId(alert.id);
+        try {
+            const response = await api(`/alerts/${alert.id}/revise`, { method: 'POST' });
+            window.location.assign(`/alerts/${response.data.id}/edit`);
+        } catch (requestError) {
+            setRevisionError(requestError.message);
+            setRevisingAlertId(null);
+        }
+    }
 
     return (
         <>
             <PageTitle eyebrow="ADVISORY OPERATIONS" title="Advisories" description="Prepare, review, and publish verified hazard advisories." action={<LinkButton href="/alerts/create">Prepare advisory</LinkButton>} />
+            <Notice>{revisionError}</Notice>
             <Panel>
                 <PageState loading={loading} error={error}>
                     {!data?.data?.length ? <EmptyState title="No advisories have been created yet">Verified source records are required to prepare an advisory.</EmptyState> : (
@@ -347,7 +441,23 @@ export function AlertsPage() {
                                 <td><StatusBadge>{alert.status}</StatusBadge></td>
                                 <td>{alert.risk_areas?.length ?? 0} area(s)</td>
                                 <td>{formatDate(alert.updated_at)}</td>
-                                <td><a className="text-link" href={`/alerts/${alert.id}`}>Open</a></td>
+                                <td>
+                                    <div className="inline-actions">
+                                        <a className="text-link" href={`/alerts/${alert.id}`}>Open</a>
+                                        {['draft', 'approved'].includes(alert.status) && <a className="text-link" href={`/alerts/${alert.id}/edit`}>Edit</a>}
+                                        {alert.status === 'published' && (
+                                            <button
+                                                className="text-button"
+                                                disabled={revisingAlertId === alert.id}
+                                                onClick={() => editPublishedAlert(alert)}
+                                                title="Create an editable replacement draft"
+                                                type="button"
+                                            >
+                                                {revisingAlertId === alert.id ? 'Preparing…' : 'Edit'}
+                                            </button>
+                                        )}
+                                    </div>
+                                </td>
                             </tr>)}
                         </tbody></table></div>
                     )}
@@ -462,20 +572,24 @@ export function AlertFormPage({ id }) {
 
     return (
         <>
-            <PageTitle eyebrow="ADVISORY OPERATIONS" title={editing ? 'Revise draft advisory' : 'Prepare an advisory'} description="Drafts remain unpublished until another authorized staff member approves them." />
-            <Panel className="form-panel">
+            <PageTitle eyebrow="ADVISORY OPERATIONS" title={editing ? 'Revise draft advisory' : 'Prepare an advisory'} description="Drafts remain unpublished until approved, or published immediately by a system administrator or MDRRMO." />
+            <Panel className="form-panel advisory-form-panel">
                 <FormError message={error} />
                 {sources.length === 0 && <Notice tone="info">At least one verified official source is required before an advisory can be drafted.</Notice>}
-                <form className="stack-form" onSubmit={handleSubmit}>
-                    <Field label="Verified source">
-                        <SelectInput value={form.hazard_source_id} required onChange={(event) => update('hazard_source_id', event.target.value)}>
-                            <option value="">Choose a source record</option>
-                            {sources.map((source) => <option value={source.id} key={source.id}>{source.organization} · {source.title}</option>)}
-                        </SelectInput>
-                    </Field>
-                    <Field label="Advisory title"><TextInput value={form.title} maxLength="180" required onChange={(event) => update('title', event.target.value)} /></Field>
-                    <Field label="Message"><TextArea value={form.message} maxLength="5000" rows="5" required onChange={(event) => update('message', event.target.value)} /></Field>
-                    <Field label="Safety instructions"><TextArea value={form.safety_instructions} maxLength="5000" rows="4" required onChange={(event) => update('safety_instructions', event.target.value)} /></Field>
+                <form className="stack-form advisory-form" onSubmit={handleSubmit}>
+                    <div className="form-grid">
+                        <Field label="Verified source">
+                            <SelectInput value={form.hazard_source_id} required onChange={(event) => update('hazard_source_id', event.target.value)}>
+                                <option value="">Choose a source record</option>
+                                {sources.map((source) => <option value={source.id} key={source.id}>{source.organization} · {source.title}</option>)}
+                            </SelectInput>
+                        </Field>
+                        <Field label="Advisory title"><TextInput value={form.title} maxLength="180" required onChange={(event) => update('title', event.target.value)} /></Field>
+                    </div>
+                    <div className="form-grid advisory-message-fields">
+                        <Field label="Message"><TextArea value={form.message} maxLength="5000" rows="5" required onChange={(event) => update('message', event.target.value)} /></Field>
+                        <Field label="Safety instructions"><TextArea value={form.safety_instructions} maxLength="5000" rows="4" required onChange={(event) => update('safety_instructions', event.target.value)} /></Field>
+                    </div>
                     <div className="form-grid">
                         <Field label="Severity"><SelectInput value={form.severity} onChange={(event) => update('severity', event.target.value)}>{alertSeverities.map((severity) => <option key={severity} value={severity}>{severity}</option>)}</SelectInput></Field>
                         <Field
@@ -516,7 +630,9 @@ export function AlertDetailPage({ id, user }) {
     const { data, loading, error } = useApiData(`/alerts/${id}`);
     const [actionError, setActionError] = useState('');
     const [busy, setBusy] = useState(false);
+    const [closeReason, setCloseReason] = useState('');
     const alert = data?.data;
+    const canPublishImmediately = ['system_admin', 'mdrrmo'].includes(user.role);
 
     async function performAction(path, method = 'PATCH', body) {
         setBusy(true);
@@ -524,6 +640,34 @@ export function AlertDetailPage({ id, user }) {
         try {
             await api(path, { method, body });
             window.location.reload();
+        } catch (requestError) {
+            setActionError(requestError.message);
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    function closeAdvisory(event) {
+        event.preventDefault();
+        const reason = closeReason.trim();
+        if (!reason) {
+            setActionError('Enter a reason for closing this advisory.');
+            return;
+        }
+
+        performAction(`/alerts/${id}/close`, 'PATCH', { action: 'expired', reason });
+    }
+
+    async function startRevision() {
+        if (!window.confirm('Create a replacement draft for this advisory? The current advisory stays active until its replacement is published.')) {
+            return;
+        }
+
+        setBusy(true);
+        setActionError('');
+        try {
+            const response = await api(`/alerts/${id}/revise`, { method: 'POST' });
+            window.location.assign(`/alerts/${response.data.id}/edit`);
         } catch (requestError) {
             setActionError(requestError.message);
         } finally {
@@ -549,24 +693,37 @@ export function AlertDetailPage({ id, user }) {
             <PageTitle eyebrow="ADVISORY DETAILS" title={alert.title} description={`Created ${formatDate(alert.created_at)} · ${alert.hazard_source?.organization ?? 'Official source'}`} action={<LinkButton href="/alerts" secondary>Back to advisories</LinkButton>} />
             <Notice message={actionError}>{actionError}</Notice>
             <div className="detail-grid">
-                <Panel title="Advisory"><div className="detail-badges"><StatusBadge>{alert.severity}</StatusBadge><IntensityIndicator value={alert.intensity} /><StatusBadge>{alert.status}</StatusBadge></div><p className="detail-message">{alert.message}</p><h3>Safety instructions</h3><p>{alert.safety_instructions}</p><dl className="detail-list"><div><dt>Starts</dt><dd>{formatDate(alert.starts_at)}</dd></div><div><dt>Ends</dt><dd>{formatDate(alert.ends_at)}</dd></div><div><dt>Recipients</dt><dd>{alert.recipient_count ?? 'Not published'}</dd></div><div><dt>Drafted by</dt><dd>{alert.creator?.name ?? '—'}</dd></div><div><dt>Approved by</dt><dd>{alert.approver?.name ?? 'Not approved'}</dd></div></dl></Panel>
+                <Panel title="Advisory"><div className="detail-badges"><StatusBadge>{alert.severity}</StatusBadge><IntensityIndicator value={alert.intensity} /><StatusBadge>{alert.status}</StatusBadge></div><p className="detail-message">{alert.message}</p><h3>Safety instructions</h3><p className="detail-safety-instructions">{alert.safety_instructions}</p><dl className="detail-list"><div><dt>Starts</dt><dd>{formatDate(alert.starts_at)}</dd></div><div><dt>Ends</dt><dd>{formatDate(alert.ends_at)}</dd></div><div><dt>Recipients</dt><dd>{alert.recipient_count ?? 'Not published'}</dd></div><div><dt>Drafted by</dt><dd>{alert.creator?.name ?? '—'}</dd></div><div><dt>Approved by</dt><dd>{alert.approver?.name ?? 'Not approved'}</dd></div></dl></Panel>
                 <Panel title="Source and coverage"><div className="source-detail"><strong>{alert.hazard_source?.title}</strong><span>{alert.hazard_source?.organization}</span>{alert.hazard_source?.source_url && <a className="text-link" href={alert.hazard_source.source_url} target="_blank" rel="noreferrer">Open source</a>}</div><div className="coverage-list">{alert.risk_areas?.map((area) => <div key={area.id}><strong>{area.name}</strong><small>{area.barangay} · {area.classification}</small></div>)}</div></Panel>
             </div>
             <Panel title="Coverage heatmap"><MapView areas={coverageAreas} /></Panel>
             <Panel title="Workflow actions">
                 <div className="workflow-actions">
                     {['draft', 'approved'].includes(alert.status) && <LinkButton href={`/alerts/${alert.id}/edit`} secondary>Edit draft</LinkButton>}
+                    {alert.status === 'draft' && canPublishImmediately && <button className="button" disabled={busy} onClick={() => performAction(`/alerts/${id}/publish`)}>Publish draft now</button>}
                     {alert.status === 'draft' && alert.creator?.id !== user.id && <button className="button" disabled={busy} onClick={() => performAction(`/alerts/${id}/approve`)}>Approve</button>}
-                    {alert.status === 'approved' && alert.approver?.id !== user.id && <button className="button" disabled={busy} onClick={() => performAction(`/alerts/${id}/publish`)}>Publish to all residents</button>}
-                    {alert.status === 'published' && <button className="button button-muted" disabled={busy} onClick={() => {
-                        if (window.confirm('Create a replacement draft for this advisory?')) performAction(`/alerts/${id}/revise`, 'POST');
-                    }}>Create revision</button>}
-                    {!['expired', 'cancelled'].includes(alert.status) && <button className="button button-danger" disabled={busy} onClick={() => {
-                        const reason = window.prompt('Reason for closing this advisory:');
-                        if (reason?.trim()) performAction(`/alerts/${id}/close`, 'PATCH', { action: 'expired', reason: reason.trim() });
-                    }}>Close advisory</button>}
+                    {alert.status === 'approved' && (alert.approver?.id !== user.id || canPublishImmediately) && <button className="button" disabled={busy} onClick={() => performAction(`/alerts/${id}/publish`)}>Publish to all residents</button>}
+                    {alert.status === 'published' && <button className="button button-muted" disabled={busy} onClick={startRevision}>Create revision</button>}
                 </div>
-                <p className="field-hint">Approval and publication must be completed by different authorized staff accounts.</p>
+                {!['expired', 'cancelled'].includes(alert.status) && (
+                    <form className="close-advisory-form" onSubmit={closeAdvisory}>
+                        <Field label="Reason for closing this advisory">
+                            <TextArea
+                                value={closeReason}
+                                maxLength="500"
+                                rows="3"
+                                required
+                                onChange={(event) => setCloseReason(event.target.value)}
+                            />
+                        </Field>
+                        <button className="button button-danger" disabled={busy || !closeReason.trim()} type="submit">Close advisory</button>
+                    </form>
+                )}
+                <p className="field-hint">
+                    {canPublishImmediately
+                        ? 'System administrators and MDRRMO personnel may publish a draft immediately or publish an approved advisory. Publishing sends it to all active residents.'
+                        : 'Approval and publication must be completed by different authorized staff accounts.'}
+                </p>
             </Panel>
         </>
     );
@@ -585,6 +742,21 @@ export function ResidentAlertsPage() {
                 )}
             </PageState></Panel>
         </>
+    );
+}
+
+function SafetyInstructionContent({ value }) {
+    const text = value?.trim() ?? '';
+    const steps = text.split(/(?=\s+\d+\.\s+)/).map((step) => step.trim()).filter(Boolean);
+
+    if (!/^\d+\.\s/.test(text) || steps.length < 2) {
+        return <p className="detail-safety-instructions">{value}</p>;
+    }
+
+    return (
+        <ol className="detail-safety-list">
+            {steps.map((step, index) => <li key={index}>{step.replace(/^\d+\.\s*/, '')}</li>)}
+        </ol>
     );
 }
 
@@ -609,7 +781,23 @@ export function ResidentAlertPage({ id }) {
         <>
             <PageTitle eyebrow="RESIDENT ADVISORY" title={alert.title} action={<LinkButton href="/my-alerts" secondary>Back to my alerts</LinkButton>} />
             <div className="detail-grid">
-                <Panel title="What you need to know"><div className="detail-badges"><StatusBadge>{alert.severity}</StatusBadge><IntensityIndicator value={alert.intensity} /></div><p className="detail-message">{alert.message}</p><h3>Safety instructions</h3><p>{alert.safety_instructions}</p><dl className="detail-list"><div><dt>Issued</dt><dd>{formatDate(alert.published_at)}</dd></div><div><dt>Valid until</dt><dd>{formatDate(alert.ends_at)}</dd></div></dl></Panel>
+                <Panel title="What you need to know" className="resident-advisory-panel">
+                    <div className="resident-advisory-scroll" tabIndex={0} aria-label="Advisory message, safety instructions, and validity">
+                        <div className="detail-badges"><StatusBadge>{alert.severity}</StatusBadge><IntensityIndicator value={alert.intensity} /></div>
+                        <section className="resident-advisory-section">
+                            <h3>Advisory message</h3>
+                            <p className="detail-message">{alert.message}</p>
+                        </section>
+                        <section className="resident-advisory-section">
+                            <h3>Safety instructions</h3>
+                            <SafetyInstructionContent value={alert.safety_instructions} />
+                        </section>
+                        <dl className="detail-list">
+                            <div><dt>Issued</dt><dd>{formatDate(alert.published_at)}</dd></div>
+                            <div><dt>Valid until</dt><dd>{formatDate(alert.ends_at)}</dd></div>
+                        </dl>
+                    </div>
+                </Panel>
                 <Panel title="Official source"><strong>{alert.hazard_source?.title}</strong><p className="muted">{alert.hazard_source?.organization} · {formatDate(alert.hazard_source?.issued_at)}</p>{alert.hazard_source?.source_url && <a className="text-link" href={alert.hazard_source.source_url} target="_blank" rel="noreferrer">View official source</a>}<div className="coverage-list">{alert.risk_areas?.map((area) => <div key={area.id}><strong>{area.name}</strong><small>{area.barangay}{area.sitio ? ` · ${area.sitio}` : ''}</small></div>)}</div></Panel>
             </div>
             <Panel title="Affected-area heatmap"><MapView areas={coverageAreas} /></Panel>
@@ -686,13 +874,17 @@ function HazardSourceForm({ user }) {
     return (
         <>
             <PageTitle eyebrow="SOURCE VERIFICATION" title="Add a source record" description="Records are submitted as pending and must be independently reviewed." />
-            <Panel className="form-panel"><FormError message={error} />
-                <form className="stack-form" onSubmit={handleSubmit}>
-                            <Field label="Source type"><SelectInput value={form.source_type} onChange={(event) => setForm({ ...form, source_type: event.target.value })}>{user.role !== 'bfp_officer' && <option value="weather">PAGASA weather</option>}<option value="fire">BFP fire information</option></SelectInput></Field>
-                    <Field label="Record title"><TextInput required maxLength="180" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></Field>
-                    <Field label="Reference number (optional)"><TextInput maxLength="150" value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })} /></Field>
+            <Panel className="form-panel source-form-panel"><FormError message={error} />
+                <form className="stack-form source-form" onSubmit={handleSubmit}>
+                    <div className="form-grid">
+                        <Field label="Source type"><SelectInput value={form.source_type} onChange={(event) => setForm({ ...form, source_type: event.target.value })}>{user.role !== 'bfp_officer' && <option value="weather">PAGASA weather</option>}<option value="fire">BFP fire information</option></SelectInput></Field>
+                        <Field label="Record title"><TextInput required maxLength="180" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></Field>
+                    </div>
+                    <div className="form-grid">
+                        <Field label="Reference number (optional)"><TextInput maxLength="150" value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })} /></Field>
+                        <Field label="Official HTTPS source URL (optional)"><TextInput type="url" value={form.source_url} onChange={(event) => setForm({ ...form, source_url: event.target.value })} /></Field>
+                    </div>
                     <Field label="Details"><TextArea required maxLength="10000" rows="7" value={form.details} onChange={(event) => setForm({ ...form, details: event.target.value })} /></Field>
-                    <Field label="Official HTTPS source URL (optional)"><TextInput type="url" value={form.source_url} onChange={(event) => setForm({ ...form, source_url: event.target.value })} /></Field>
                     <Field label="Issued at (Philippine time)"><TextInput type="datetime-local" required value={form.issued_at} onChange={(event) => setForm({ ...form, issued_at: event.target.value })} /></Field>
                     <FormActions><SubmitButton saving={saving}>Submit for review</SubmitButton><LinkButton href="/hazard-sources" secondary>Cancel</LinkButton></FormActions>
                 </form>
@@ -845,7 +1037,7 @@ function RiskAreaForm({ id }) {
     return (
         <>
             <PageTitle eyebrow="MAPPED COVERAGE" title={editing ? 'Edit risk area' : 'Add risk area'} description="Enter coordinates or click the map to set the center; the map focuses on that point." />
-            <Panel className="form-panel"><FormError message={error} />
+            <Panel className="form-panel risk-form-panel"><FormError message={error} />
                 <form className="stack-form" onSubmit={handleSubmit}>
                     <div className="form-grid">
                         <Field label="Area name"><TextInput required maxLength="150" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
@@ -925,8 +1117,8 @@ export function ProfilePage({ user }) {
     return (
         <>
             <PageTitle eyebrow="ACCOUNT SETTINGS" title="My profile" description={`Signed in as ${roleLabel(user.role)}.`} />
-            <Panel className="form-panel"><FormError message={requestError} />{notice && <Notice tone="success">{notice}</Notice>}
-                <form className="stack-form" onSubmit={handleSubmit}>
+            <Panel className="form-panel profile-form-panel"><FormError message={requestError} />{notice && <Notice tone="success">{notice}</Notice>}
+                <form className="stack-form profile-form" onSubmit={handleSubmit}>
                     <div className="form-grid">
                         <Field label="Full name"><TextInput required maxLength="120" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
                         <Field label="Email address"><TextInput type="email" required maxLength="255" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></Field>
