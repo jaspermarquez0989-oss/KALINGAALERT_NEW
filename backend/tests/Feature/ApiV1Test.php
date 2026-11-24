@@ -732,6 +732,15 @@ class ApiV1Test extends TestCase
             ->assertNoContent()
             ->assertHeader('Access-Control-Allow-Origin', 'http://localhost:5173')
             ->assertHeader('Access-Control-Allow-Methods');
+
+        $this->withHeaders([
+            'Origin' => 'http://127.0.0.1:5173',
+            'Access-Control-Request-Method' => 'POST',
+            'Access-Control-Request-Headers' => 'authorization,content-type',
+        ])->options('/api/v1/auth/login')
+            ->assertNoContent()
+            ->assertHeader('Access-Control-Allow-Origin', 'http://127.0.0.1:5173')
+            ->assertHeader('Access-Control-Allow-Methods');
     }
 
     private function makeUser(string $role, array $attributes = []): User
