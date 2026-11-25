@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import bongabongBoundary from './data/bongabong-boundary.json';
 import { formatCoordinatePair } from './coordinates.js';
 import { heatPaletteForScore } from './intensity.js';
 
@@ -139,35 +138,16 @@ export default function MapView({
         }
 
         const L = window.L;
-        const municipality = L.geoJSON(bongabongBoundary);
-        const bounds = municipality.getBounds();
         const map = L.map(element, {
             scrollWheelZoom: false,
-            maxBounds: bounds.pad(0.45),
-            maxBoundsViscosity: 1,
             maxZoom: 16,
         });
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
-            attribution: '&copy; OpenStreetMap contributors · Municipality boundary: geoBoundaries (NAMRIA/PSA/OCHA), CC BY 3.0 IGO',
+            attribution: '&copy; OpenStreetMap contributors',
         }).addTo(map);
-        map.fitBounds(bounds.pad(0.3), { padding: [18, 18] });
-
-        const municipalityRing = bongabongBoundary.geometry.coordinates[0]
-            .map(([longitude, latitude]) => [latitude, longitude]);
-        L.polygon([
-            [[85, -180], [85, 180], [-85, 180], [-85, -180]],
-            municipalityRing,
-        ], {
-            color: '#f6f7f3',
-            fillColor: '#f6f7f3',
-            fillOpacity: 0.78,
-            fillRule: 'evenodd',
-            interactive: false,
-            stroke: false,
-        }).addTo(map);
-        municipality.setStyle({ color: '#1d5b45', fillOpacity: 0, interactive: false, weight: 2 }).addTo(map);
+        map.setView([12.7074, 121.4056], 11);
 
         if (editable) {
             const points = [];
