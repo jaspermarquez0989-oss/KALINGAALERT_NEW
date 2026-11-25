@@ -207,7 +207,7 @@ td select { min-width: 150px; }
 .coordinate-preview { display: flex; flex-wrap: wrap; gap: 4px 8px; padding: 10px 12px; border: 1px solid #dfe6e1; border-radius: 7px; background: #f8faf8; font-size: 11px; }
 .coordinate-preview strong { color: #43564c; }
 .coordinate-preview span { color: #1d5b45; font-variant-numeric: tabular-nums; }
-.leaflet-map { height: 500px; overflow: hidden; border: 1px solid #dfe6e1; border-radius: 8px; background: #e9f0e9; }
+.leaflet-map { height: 350px; overflow: hidden; border: 1px solid #dfe6e1; border-radius: 8px; background: #e9f0e9; }
 .leaflet-map.is-drawing { cursor: crosshair; }
 .map-error { margin: 0 0 8px; color: #976739; font-size: 11px; }
 .heatmap-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-bottom: 10px; color: #66776e; font-size: 10px; }
@@ -324,7 +324,7 @@ td select { min-width: 150px; }
     .guest-header nav > a:first-child { display: none; }
     .form-grid { grid-template-columns: 1fr; }
     .map-toolbar { align-items: flex-start; flex-direction: column; }
-    .leaflet-map { height: 400px; }
+    .leaflet-map { height: 300px; }
     .panel { padding: 16px; }
     .form-panel { padding: 18px 15px; }
     .advisory-form, .source-form, .profile-form { gap: 17px; }
