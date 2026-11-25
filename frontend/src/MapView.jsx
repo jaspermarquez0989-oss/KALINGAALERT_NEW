@@ -35,7 +35,7 @@ function popupContent(area) {
 
         if (alert.intensity !== null && alert.intensity !== undefined) {
             const intensity = document.createElement('div');
-            intensity.textContent = `Advisory intensity: ${alert.intensity}/5`;
+            intensity.textContent = `Advisory level: ${alert.intensity}/5`;
             detail.append(intensity);
         }
 
@@ -360,8 +360,8 @@ export default function MapView({
                 </div>
             )}
             {!editable && (
-                <div className="heatmap-legend" aria-label="Advisory intensity scale from 1 to 5">
-                    <span>Advisory intensity</span>
+                <div className="heatmap-legend" aria-label="Advisory level scale from 1 to 5">
+                    <span>Advisory level</span>
                     {[1, 2, 3, 4, 5].map((level) => (
                         <span className="heatmap-legend-step" key={level}>
                             <i style={{ backgroundColor: heatPaletteForScore(level / 5).fill }} />

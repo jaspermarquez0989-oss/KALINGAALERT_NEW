@@ -36,7 +36,7 @@ function IntensityIndicator({ value, compact = false }) {
     return (
         <span className="intensity-indicator">
             <i aria-hidden="true" style={{ backgroundColor: intensityColorForLevel(level) }} />
-            {compact ? `${level}/5` : `Intensity ${level}/5`}
+            {compact ? `${level}/5` : `Level ${level}/5`}
         </span>
     );
 }
@@ -398,7 +398,7 @@ export function DashboardPage({ user }) {
                 {data.areas.length || isResident
                     ? <MapView areas={mapAreas.filter((area) => area.is_active)} />
                     : <EmptyState title="No active mapped areas" />}
-                {isResident && <p className="muted">This map shows all active public risk areas and current advisory intensity. Your exact home location stays private.</p>}
+                {isResident && <p className="muted">This map shows all active public risk areas and current advisory level. Your exact home location stays private.</p>}
                 {isResident && data.areas.length === 0 && <Notice tone="info">No active risk areas are currently mapped.</Notice>}
             </Panel>
             <p className="disclaimer"><strong>Safety notice</strong> KalingaAlert does not predict hazards, accept incident reports, or dispatch rescue. Follow official warnings and local emergency instructions.</p>
@@ -433,7 +433,7 @@ export function AlertsPage() {
             <Panel>
                 <PageState loading={loading} error={error}>
                     {!data?.data?.length ? <EmptyState title="No advisories have been created yet">Verified source records are required to prepare an advisory.</EmptyState> : (
-                        <div className="table-scroll"><table><thead><tr><th>Advisory</th><th>Severity</th><th>Intensity</th><th>Status</th><th>Coverage</th><th>Updated</th><th /></tr></thead><tbody>
+                        <div className="table-scroll"><table><thead><tr><th>Advisory</th><th>Severity</th><th>Level</th><th>Status</th><th>Coverage</th><th>Updated</th><th /></tr></thead><tbody>
                             {data.data.map((alert) => <tr key={alert.id}>
                                 <td><strong>{alert.title}</strong><small>{alert.hazard_source?.organization ?? 'Official source'}</small></td>
                                 <td><StatusBadge>{alert.severity}</StatusBadge></td>
@@ -593,7 +593,7 @@ export function AlertFormPage({ id }) {
                     <div className="form-grid">
                         <Field label="Severity"><SelectInput value={form.severity} onChange={(event) => update('severity', event.target.value)}>{alertSeverities.map((severity) => <option key={severity} value={severity}>{severity}</option>)}</SelectInput></Field>
                         <Field
-                            label="Advisory intensity (1-5)"
+                            label="Advisory level (1-5)"
                             hint={`Selected: ${advisoryIntensities.find(({ value }) => value === form.intensity)?.label ?? '3 - Moderate'}`}
                         >
                             <SelectInput value={form.intensity} onChange={(event) => update('intensity', Number(event.target.value))}>
@@ -949,7 +949,7 @@ function RiskAreaList({ canManage }) {
 
     return (
         <>
-            <PageTitle eyebrow="MAPPED COVERAGE" title="Risk areas" description="Maintain mapped coverage and view active advisory intensity." action={canManage && <LinkButton href="/risk-areas/create">Add risk area</LinkButton>} />
+            <PageTitle eyebrow="MAPPED COVERAGE" title="Risk areas" description="Maintain mapped coverage and view active advisory level." action={canManage && <LinkButton href="/risk-areas/create">Add risk area</LinkButton>} />
             <FormError message={actionError} />
             <Panel><PageState loading={loading} error={error || alertsError}>
                 {!areas.length ? <EmptyState title="No risk areas configured">Add a mapped area before preparing advisories.</EmptyState> : (
