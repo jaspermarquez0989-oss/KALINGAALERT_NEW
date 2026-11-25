@@ -272,6 +272,21 @@ export default function MapView({
                     coordinates: [points.map(([latitude, longitude]) => [longitude, latitude])],
                 });
             };
+
+            element.__undoDrawing = () => {
+                if (!isDrawing || points.length === 0) {
+                    return;
+                }
+
+                points.pop();
+                const marker = markers.pop();
+                if (marker) map.removeLayer(marker);
+                if (preview) map.removeLayer(preview);
+                preview = points.length > 0
+                    ? L.polyline(points, { color: '#477958', dashArray: '5 5' }).addTo(map)
+                    : null;
+                setPointCount(points.length);
+            };
         } else {
             const polygons = [];
 
@@ -319,6 +334,7 @@ export default function MapView({
             map.remove();
             delete element.__startDrawing;
             delete element.__finishDrawing;
+            delete element.__undoDrawing;
             delete element.__setCenterLocation;
         };
     }, [areas, editable]);
@@ -333,6 +349,9 @@ export default function MapView({
                             elementRef.current?.__startDrawing?.();
                             setDrawing(true);
                         }}>Start drawing</button>
+                        <button className="button button-muted button-small" type="button" disabled={!drawing || pointCount === 0} onClick={() => {
+                            elementRef.current?.__undoDrawing?.();
+                        }}>Undo last point</button>
                         <button className="button button-small" type="button" disabled={!drawing || pointCount < 3} onClick={() => {
                             elementRef.current?.__finishDrawing?.();
                             setDrawing(false);
