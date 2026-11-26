@@ -255,6 +255,20 @@ export default function App() {
 
     
     async function signOut() {
+        const result = await Swal.fire({
+            icon: 'warning',
+            title: 'Sign out?',
+            text: 'Are you sure you want to sign out?',
+            showCancelButton: true,
+            confirmButtonText: 'Sign out',
+            cancelButtonText: 'Stay signed in',
+            confirmButtonColor: '#1d5b45',
+        });
+
+        if (!result.isConfirmed) {
+            return;
+        }
+
         try {
             await api('/auth/logout', { method: 'POST' });
         } catch (error) {
