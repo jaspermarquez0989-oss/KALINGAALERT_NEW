@@ -108,6 +108,7 @@ export default function MapView({
     areas = emptyAreas,
     boundary,
     editable = false,
+    focusLocation,
     latitude,
     longitude,
     onBoundaryChange,
@@ -148,6 +149,9 @@ export default function MapView({
             attribution: '&copy; OpenStreetMap contributors',
         }).addTo(map);
         map.setView([12.7074, 121.4056], 11);
+        element.__focusLocation = (lat, lng, zoom = 14) => {
+            map.setView([lat, lng], zoom, { animate: true });
+        };
 
         if (editable) {
             const points = [];
@@ -316,8 +320,19 @@ export default function MapView({
             delete element.__finishDrawing;
             delete element.__undoDrawing;
             delete element.__setCenterLocation;
+            delete element.__focusLocation;
         };
     }, [areas, editable]);
+
+    useEffect(() => {
+        if (focusLocation) {
+            elementRef.current?.__focusLocation?.(
+                focusLocation.latitude,
+                focusLocation.longitude,
+                focusLocation.zoom,
+            );
+        }
+    }, [focusLocation]);
 
     return (
         <div className="map-component">

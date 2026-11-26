@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, saveToken } from './api.js';
 import { formatCoordinatePair, formatLatitude, formatLongitude } from './coordinates.js';
+import bongabongBoundary from './data/bongabong-boundary.json';
 import { bongabongBarangays } from './data/bongabong-barangays.js';
 import { intensityColorForLevel } from './intensity.js';
 import MapView from './MapView.jsx';
@@ -23,6 +24,11 @@ import {
 } from './ui.jsx';
 
 const alertSeverities = ['advisory', 'watch', 'warning', 'emergency'];
+const bongabongBarangayAliases = {
+    'Bagumbayan I': ['Bagong Bayan I'],
+    'Bagumbayan II': ['Bagong Bayan II'],
+    Polusahi: ['Pulosahi'],
+};
 const advisoryIntensities = [
     { value: 1, label: '1 - Very low' },
     { value: 2, label: '2 - Low' },
@@ -30,6 +36,26 @@ const advisoryIntensities = [
     { value: 4, label: '4 - High' },
     { value: 5, label: '5 - Very high' },
 ];
+
+function isWithinBongabong(longitude, latitude) {
+    const ring = bongabongBoundary.geometry.coordinates[0];
+    let inside = false;
+
+    for (let current = 0, previous = ring.length - 1; current < ring.length; previous = current++) {
+        const [currentLongitude, currentLatitude] = ring[current];
+        const [previousLongitude, previousLatitude] = ring[previous];
+        const crossesLatitude = (currentLatitude > latitude) !== (previousLatitude > latitude);
+        const intersection = ((previousLongitude - currentLongitude) * (latitude - currentLatitude)
+            / ((previousLatitude - currentLatitude) || Number.EPSILON))
+            + currentLongitude;
+
+        if (crossesLatitude && longitude < intersection) {
+            inside = !inside;
+        }
+    }
+
+    return inside;
+}
 const staffRoles = ['system_admin', 'mdrrmo', 'bfp_officer', 'alert_operator'];
 
 function IntensityIndicator({ value, compact = false }) {
@@ -993,9 +1019,13 @@ function RiskAreaForm({ id }) {
     const editing = Boolean(id);
     const [form, setForm] = useState({ name: '', barangay: '', sitio: '', classification: '', latitude: '', longitude: '', is_active: true });
     const [boundary, setBoundary] = useState(null);
+    const [mapFocus, setMapFocus] = useState(null);
+    const [locatingBarangay, setLocatingBarangay] = useState('');
+    const [locationLookupError, setLocationLookupError] = useState('');
     const [loading, setLoading] = useState(editing);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
+    const locationLookupId = useRef(0);
 
     useEffect(() => {
         if (!editing) return;
@@ -1020,6 +1050,74 @@ function RiskAreaForm({ id }) {
             .finally(() => { if (isCurrent) setLoading(false); });
         return () => { isCurrent = false; };
     }, [editing, id]);
+
+    async function focusMapOnBarangay(barangay) {
+        const lookupId = ++locationLookupId.current;
+        const aliases = bongabongBarangayAliases[barangay] ?? [];
+        const names = [barangay, ...aliases].map((name) => name.toLowerCase());
+
+        setLocationLookupError('');
+        setLocatingBarangay(barangay);
+
+        try {
+            const query = new URLSearchParams({
+                q: `${barangay}, Oriental Mindoro, Philippines`,
+                lat: '12.7074',
+                lon: '121.4056',
+                zoom: '12',
+                limit: '20',
+            });
+            const response = await fetch(`https://photon.komoot.io/api/?${query}`);
+
+            if (!response.ok) {
+                throw new Error('The map search service is unavailable. You can still locate the barangay manually on the map.');
+            }
+
+            const result = await response.json();
+            const features = Array.isArray(result.features) ? result.features : [];
+            const isLocalResult = (feature) => {
+                const properties = feature.properties ?? {};
+                const coordinates = feature.geometry?.coordinates;
+                const longitude = Number(coordinates?.[0]);
+                const latitude = Number(coordinates?.[1]);
+                const matchedName = [properties.name, properties.locality, properties.city]
+                    .some((name) => typeof name === 'string' && names.includes(name.toLowerCase()));
+                const inOrientalMindoro = !properties.state
+                    || (typeof properties.state === 'string' && properties.state.toLowerCase() === 'oriental mindoro');
+
+                return matchedName
+                    && properties.countrycode === 'PH'
+                    && inOrientalMindoro
+                    && Number.isFinite(latitude)
+                    && Number.isFinite(longitude)
+                    && isWithinBongabong(longitude, latitude);
+            };
+            const feature = features.find((candidate) => {
+                const properties = candidate.properties ?? {};
+                return properties.osm_key === 'place'
+                    && names.includes(String(properties.name ?? '').toLowerCase())
+                    && isLocalResult(candidate);
+            }) ?? features.find(isLocalResult);
+
+            if (!feature) {
+                throw new Error(`Could not find ${barangay} on the map. You can still locate it manually.`);
+            }
+
+            const [longitude, latitude] = feature.geometry.coordinates.map(Number);
+
+            if (lookupId === locationLookupId.current) {
+                setMapFocus({ latitude, longitude, zoom: 14 });
+            }
+        } catch (requestError) {
+            if (lookupId === locationLookupId.current) {
+                setLocationLookupError(requestError.message);
+            }
+        } finally {
+            if (lookupId === locationLookupId.current) {
+                setLocatingBarangay('');
+            }
+        }
+    }
 
     async function handleSubmit(event) {
         event.preventDefault();
@@ -1048,20 +1146,27 @@ function RiskAreaForm({ id }) {
 
     return (
         <>
-            <PageTitle eyebrow="MAPPED COVERAGE" title={editing ? 'Edit risk area' : 'Add risk area'} description="Enter coordinates or click the map to set the center; the map focuses on that point." />
+            <PageTitle eyebrow="MAPPED COVERAGE" title={editing ? 'Edit risk area' : 'Add risk area'} description="Choose a barangay to center the map near it, then set the exact area center and boundary." />
             <Panel className="form-panel risk-form-panel"><FormError message={error} />
                 <form className="stack-form" onSubmit={handleSubmit}>
                     <div className="form-grid">
                         <Field label="Area name"><TextInput required maxLength="150" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
-                        <Field label="Barangay" hint="Select one of Bongabong's 36 barangays.">
-                            <SelectInput required value={form.barangay} onChange={(event) => setForm({ ...form, barangay: event.target.value })}>
+                        <Field label="Barangay" hint="Selecting a barangay moves the map near its mapped location.">
+                            <SelectInput required value={form.barangay} onChange={(event) => {
+                                const barangay = event.target.value;
+                                setForm((current) => ({ ...current, barangay }));
+                                if (barangay) {
+                                    focusMapOnBarangay(barangay);
+                                } else {
+                                    locationLookupId.current += 1;
+                                    setLocationLookupError('');
+                                    setLocatingBarangay('');
+                                }
+                            }}>
                                 <option value="">Select a barangay</option>
                                 {form.barangay && !bongabongBarangays.includes(form.barangay) && <option value={form.barangay}>{form.barangay} (existing value)</option>}
                                 {bongabongBarangays.map((barangay) => <option key={barangay} value={barangay}>{barangay}</option>)}
                             </SelectInput>
-                        </Field>
-                        <Field label="Sitio / purok (optional)" hint="Enter the sitio name if known, then set the exact center on the map.">
-                            <TextInput maxLength="120" value={form.sitio} onChange={(event) => setForm({ ...form, sitio: event.target.value })} />
                         </Field>
                         <Field label="Hazard classification"><TextInput required maxLength="80" placeholder="Flood-prone, landslide-prone…" value={form.classification} onChange={(event) => setForm({ ...form, classification: event.target.value })} /></Field>
                         <Field label="Latitude (decimal degrees)" hint="Positive values are N; negative values are S."><TextInput type="number" step="any" min="-90" max="90" required value={form.latitude} onChange={(event) => setForm({ ...form, latitude: event.target.value })} /></Field>
@@ -1071,8 +1176,10 @@ function RiskAreaForm({ id }) {
                         <strong>Formatted coordinates</strong>
                         <span>{formatCoordinatePair(form.latitude, form.longitude) ?? 'Choose a center point on the map or enter both coordinates.'}</span>
                     </div>
+                    {locatingBarangay && <Notice tone="info">Finding {locatingBarangay} on the map…</Notice>}
+                    {locationLookupError && <Notice tone="info">{locationLookupError}</Notice>}
                     <label className="choice-row"><input type="checkbox" checked={form.is_active} onChange={(event) => setForm({ ...form, is_active: event.target.checked })} /><span><strong>Active coverage</strong><small>Only active areas can receive new advisories.</small></span></label>
-                    <MapView editable boundary={boundary} latitude={form.latitude} longitude={form.longitude} onBoundaryChange={setBoundary} onLocationChange={({ latitude, longitude }) => setForm((current) => ({ ...current, latitude: String(latitude), longitude: String(longitude) }))} />
+                    <MapView editable boundary={boundary} focusLocation={mapFocus} latitude={form.latitude} longitude={form.longitude} onBoundaryChange={setBoundary} onLocationChange={({ latitude, longitude }) => setForm((current) => ({ ...current, latitude: String(latitude), longitude: String(longitude) }))} />
                     {!boundary && <Notice>Finish drawing a boundary before saving.</Notice>}
                     <FormActions><SubmitButton saving={saving} disabled={!boundary || form.latitude === '' || form.longitude === ''}>{editing ? 'Save area' : 'Create area'}</SubmitButton><LinkButton href="/risk-areas" secondary>Cancel</LinkButton></FormActions>
                 </form>
