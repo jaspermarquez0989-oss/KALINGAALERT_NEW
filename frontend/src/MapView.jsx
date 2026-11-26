@@ -1,8 +1,7 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatCoordinatePair } from './coordinates.js';
 import { heatPaletteForScore } from './intensity.js';
 
-const TerrainMap = lazy(() => import('./TerrainMap.jsx'));
 const emptyAreas = [];
 
 function popupContent(area) {
@@ -105,50 +104,6 @@ function areaCenter(area, ring) {
     return boundaryCenter(ring);
 }
 
-function terrainAreaData(areas) {
-    const polygons = [];
-    const centers = [];
-
-    areas.forEach((area, index) => {
-        const ring = area.boundary?.coordinates?.[0] ?? [];
-        const intensity = heatForArea(area);
-        const palette = heatPaletteForScore(intensity);
-
-        if (area.boundary?.type !== 'Polygon' || ring.length < 4) {
-            return;
-        }
-
-        polygons.push({
-            type: 'Feature',
-            properties: {
-                areaIndex: index,
-                fillColor: palette.fill,
-            },
-            geometry: area.boundary,
-        });
-
-        const center = areaCenter(area, ring);
-        if (center) {
-            centers.push({
-                type: 'Feature',
-                properties: {
-                    spotColor: palette.spot,
-                    intensity,
-                },
-                geometry: {
-                    type: 'Point',
-                    coordinates: [center[1], center[0]],
-                },
-            });
-        }
-    });
-
-    return {
-        polygons: { type: 'FeatureCollection', features: polygons },
-        centers: { type: 'FeatureCollection', features: centers },
-    };
-}
-
 export default function MapView({
     areas = emptyAreas,
     boundary,
@@ -167,7 +122,6 @@ export default function MapView({
     const [drawing, setDrawing] = useState(false);
     const [pointCount, setPointCount] = useState(0);
     const [mapError, setMapError] = useState('');
-    const [terrainMode, setTerrainMode] = useState(false);
     boundaryCallback.current = onBoundaryChange;
     locationCallback.current = onLocationChange;
     locationRef.current = { latitude, longitude };
@@ -178,8 +132,6 @@ export default function MapView({
 
     useEffect(() => {
         const element = elementRef.current;
-
-        if (terrainMode) return undefined;
 
         if (!element || !window.L) {
             setMapError('Map tiles are unavailable. Check your internet connection and reload.');
@@ -400,7 +352,7 @@ export default function MapView({
             delete element.__focusLocation;
             delete element.__clearFocusLocation;
         };
-    }, [areas, editable, terrainMode]);
+    }, [areas, editable]);
 
     useEffect(() => {
         if (focusLocation) {
@@ -436,34 +388,18 @@ export default function MapView({
                 </div>
             )}
             {!editable && (
-                <div className="map-view-controls">
-                    <div className="heatmap-legend" aria-label="Advisory level scale from 1 to 5">
-                        <span>Advisory level</span>
-                        {[1, 2, 3, 4, 5].map((level) => (
-                            <span className="heatmap-legend-step" key={level}>
-                                <i style={{ backgroundColor: heatPaletteForScore(level / 5).fill }} />
-                                {level}
-                            </span>
-                        ))}
-                    </div>
-                    <button className="button button-muted button-small" type="button" aria-pressed={terrainMode}
-                        onClick={() => setTerrainMode((current) => !current)}>
-                        {terrainMode ? 'Flat map' : '3D terrain'}
-                    </button>
+                <div className="heatmap-legend" aria-label="Advisory level scale from 1 to 5">
+                    <span>Advisory level</span>
+                    {[1, 2, 3, 4, 5].map((level) => (
+                        <span className="heatmap-legend-step" key={level}>
+                            <i style={{ backgroundColor: heatPaletteForScore(level / 5).fill }} />
+                            {level}
+                        </span>
+                    ))}
                 </div>
             )}
-            {terrainMode && !editable
-                ? (
-                    <Suspense fallback={<div className="leaflet-map terrain-map terrain-loading" role="status">Loading 3D terrain...</div>}>
-                        <TerrainMap areas={areas} areaData={terrainAreaData(areas)} popupContent={popupContent} />
-                    </Suspense>
-                )
-                : (
-                    <>
-                        {mapError && <p className="map-error" role="status">{mapError}</p>}
-                        <div className={`leaflet-map ${editable && drawing ? 'is-drawing' : ''}`} ref={elementRef} />
-                    </>
-                )}
+            {mapError && <p className="map-error" role="status">{mapError}</p>}
+            <div className={`leaflet-map ${editable && drawing ? 'is-drawing' : ''}`} ref={elementRef} />
         </div>
     );
 }
