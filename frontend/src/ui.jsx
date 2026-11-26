@@ -1,38 +1,52 @@
 import { useEffect, useState } from 'react';
 import { api } from './api.js';
 
-export function useApiData(path) {
+export const ADVISORY_REFRESH_INTERVAL_MS = 30_000;
+
+export function useApiData(path, refreshInterval = 0) {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
     useEffect(() => {
         let isCurrent = true;
+        let refreshTimeout;
 
-        setLoading(true);
-        setError('');
+        async function loadData(isInitialLoad = false) {
+            if (isInitialLoad) {
+                setLoading(true);
+                setError('');
+            }
 
-        api(path)
-            .then((response) => {
+            try {
+                const response = await api(path);
                 if (isCurrent) {
                     setData(response);
+                    setError('');
                 }
-            })
-            .catch((requestError) => {
+            } catch (requestError) {
                 if (isCurrent) {
                     setError(requestError.message);
                 }
-            })
-            .finally(() => {
+            } finally {
                 if (isCurrent) {
-                    setLoading(false);
+                    if (isInitialLoad) {
+                        setLoading(false);
+                    }
+                    if (refreshInterval > 0) {
+                        refreshTimeout = setTimeout(() => loadData(), refreshInterval);
+                    }
                 }
-            });
+            }
+        }
+
+        loadData(true);
 
         return () => {
             isCurrent = false;
+            clearTimeout(refreshTimeout);
         };
-    }, [path]);
+    }, [path, refreshInterval]);
 
     return { data, loading, error };
 }

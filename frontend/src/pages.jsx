@@ -5,6 +5,7 @@ import { intensityColorForLevel } from './intensity.js';
 import MapView from './MapView.jsx';
 import {
     EmptyState,
+    ADVISORY_REFRESH_INTERVAL_MS,
     Field,
     FormActions,
     LoadingState,
@@ -223,8 +224,9 @@ export function DashboardPage({ user }) {
 
     useEffect(() => {
         let isCurrent = true;
+        let refreshTimeout;
 
-        async function loadDashboard() {
+        async function loadDashboard(isInitialLoad = false) {
             try {
                 if (user.role === 'resident') {
                     const [alertsResponse, status, coverageResponse] = await Promise.all([
@@ -276,17 +278,22 @@ export function DashboardPage({ user }) {
                     }));
                     if (isCurrent) setData({ areas, alerts, sources: sourceResponse.data ?? [] });
                 }
+                if (isCurrent) setError('');
             } catch (requestError) {
                 if (isCurrent) setError(requestError.message);
             } finally {
-                if (isCurrent) setLoading(false);
+                if (isCurrent) {
+                    if (isInitialLoad) setLoading(false);
+                    refreshTimeout = setTimeout(() => loadDashboard(), ADVISORY_REFRESH_INTERVAL_MS);
+                }
             }
         }
 
-        loadDashboard();
+        loadDashboard(true);
 
         return () => {
             isCurrent = false;
+            clearTimeout(refreshTimeout);
         };
     }, [user.role]);
 
@@ -407,7 +414,7 @@ export function DashboardPage({ user }) {
 }
 
 export function AlertsPage() {
-    const { data, loading, error } = useApiData('/alerts?per_page=100');
+    const { data, loading, error } = useApiData('/alerts?per_page=100', ADVISORY_REFRESH_INTERVAL_MS);
     const [revisionError, setRevisionError] = useState('');
     const [revisingAlertId, setRevisingAlertId] = useState(null);
 
@@ -730,7 +737,7 @@ export function AlertDetailPage({ id, user }) {
 }
 
 export function ResidentAlertsPage() {
-    const { data, loading, error } = useApiData('/my/alerts?per_page=100');
+    const { data, loading, error } = useApiData('/my/alerts?per_page=100', ADVISORY_REFRESH_INTERVAL_MS);
     const items = data?.data ?? [];
 
     return (
