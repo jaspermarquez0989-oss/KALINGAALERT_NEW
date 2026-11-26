@@ -75,10 +75,10 @@ function SeverityCard({ label, value, tone = '' }) {
     );
 }
 
-function AlertCard({ alert, href, onClick }) {
+function AlertCard({ alert, href, onClick, isRead }) {
     return (
         <a className="alert-card" href={href} onClick={onClick}>
-            <div className="alert-card-top"><StatusBadge>{alert.severity}</StatusBadge><IntensityIndicator value={alert.intensity} /><StatusBadge>{alert.status}</StatusBadge></div>
+            <div className="alert-card-top"><StatusBadge>{alert.severity}</StatusBadge><IntensityIndicator value={alert.intensity} /><StatusBadge>{alert.status}</StatusBadge>{isRead !== undefined && <span className={`alert-read-indicator ${isRead ? 'is-read' : 'is-unread'}`}><span aria-hidden="true" />{isRead ? 'Read' : 'Unread'}</span>}</div>
             <h3>{alert.title}</h3>
             <p>{alert.message}</p>
             <div className="alert-card-foot"><span>{alert.risk_areas?.length ?? 0} covered area(s)</span><span>{formatDate(alert.published_at ?? alert.created_at)}</span></div>
@@ -235,7 +235,10 @@ export function DashboardPage({ user }) {
                         api('/my/coverage'),
                     ]);
                     if (isCurrent) {
-                        const alerts = alertsResponse.data.map((item) => item.alert);
+                        const alerts = alertsResponse.data.map((item) => ({
+                            ...item.alert,
+                            read_at: item.read_at,
+                        }));
                         const areas = (coverageResponse.data ?? []).map((area) => ({
                             ...area,
                             alerts: alerts.filter((alert) => alert.risk_areas?.some((covered) => covered.id === area.id))
@@ -365,6 +368,7 @@ export function DashboardPage({ user }) {
                                 <AlertCard
                                     key={alert.id}
                                     alert={alert}
+                                    isRead={isResident ? Boolean(alert.read_at) : undefined}
                                     href={isResident ? `/my-alerts/${alert.id}` : `/alerts/${alert.id}`}
                                     onClick={(event) => {
                                         event.preventDefault();
@@ -745,7 +749,7 @@ export function ResidentAlertsPage() {
             <PageTitle eyebrow="RESIDENT ALERTS" title="Community advisories" description="Current public alerts available to all residents." />
             <Panel><PageState loading={loading} error={error}>
                 {items.length === 0 ? <EmptyState title="No active advisories">There are no current community advisories.</EmptyState> : (
-                    <div className="alert-list">{items.map((item) => <AlertCard key={item.alert.id} alert={item.alert} href={`/my-alerts/${item.alert.id}`} />)}</div>
+                    <div className="alert-list">{items.map((item) => <AlertCard key={item.alert.id} alert={item.alert} isRead={Boolean(item.read_at)} href={`/my-alerts/${item.alert.id}`} />)}</div>
                 )}
             </PageState></Panel>
         </>

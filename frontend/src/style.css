@@ -117,6 +117,10 @@ p { line-height: 1.65; }
 .alert-card { display: block; padding: 15px; border: 1px solid var(--line); border-radius: 8px; background: white; transition: border-color .15s ease, box-shadow .15s ease; }
 .alert-card:hover { border-color: #b6d0be; box-shadow: 0 7px 19px rgba(33, 75, 53, .07); }
 .alert-card-top, .detail-badges, .alert-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.alert-read-indicator { display: inline-flex; align-items: center; gap: 5px; font-size: 9px; font-weight: 700; white-space: nowrap; }
+.alert-read-indicator > span { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.alert-read-indicator.is-read { color: #2e7143; }
+.alert-read-indicator.is-unread { color: #9b641b; }
 .alert-card h3 { margin: 11px 0 5px; }
 .alert-card p { display: -webkit-box; overflow: hidden; margin: 0; color: #6a7972; font-size: 12px; line-height: 1.55; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .alert-card-foot { margin-top: 13px; padding-top: 10px; border-top: 1px solid #edf0ed; color: #88948e; font-size: 9px; }
