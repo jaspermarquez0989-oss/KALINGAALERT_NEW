@@ -152,6 +152,7 @@ export default function MapView({
         let barangayMarker = null;
         element.__focusLocation = (lat, lng, zoom = 14, barangay) => {
             map.setView([lat, lng], zoom, { animate: true });
+            locationCallback.current?.({ latitude: lat, longitude: lng });
 
             const label = document.createElement('span');
             label.textContent = `${barangay} (selected barangay)`;

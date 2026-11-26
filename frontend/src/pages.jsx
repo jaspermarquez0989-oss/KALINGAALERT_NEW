@@ -1108,11 +1108,6 @@ function RiskAreaForm({ id }) {
 
             if (lookupId === locationLookupId.current) {
                 setMapFocus({ latitude, longitude, zoom: 14, barangay });
-                setForm((current) => ({
-                    ...current,
-                    latitude: String(latitude),
-                    longitude: String(longitude),
-                }));
             }
         } catch (requestError) {
             if (lookupId === locationLookupId.current) {
