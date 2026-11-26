@@ -1168,6 +1168,9 @@ function RiskAreaForm({ id }) {
                                 {bongabongBarangays.map((barangay) => <option key={barangay} value={barangay}>{barangay}</option>)}
                             </SelectInput>
                         </Field>
+                        <Field label="Sitio / purok (optional)">
+                            <TextInput maxLength="120" value={form.sitio} onChange={(event) => setForm({ ...form, sitio: event.target.value })} />
+                        </Field>
                         <Field label="Hazard classification"><TextInput required maxLength="80" placeholder="Flood-prone, landslide-prone…" value={form.classification} onChange={(event) => setForm({ ...form, classification: event.target.value })} /></Field>
                         <Field label="Latitude (decimal degrees)" hint="Positive values are N; negative values are S."><TextInput type="number" step="any" min="-90" max="90" required value={form.latitude} onChange={(event) => setForm({ ...form, latitude: event.target.value })} /></Field>
                         <Field label="Longitude (decimal degrees)" hint="Positive values are E; negative values are W."><TextInput type="number" step="any" min="-180" max="180" required value={form.longitude} onChange={(event) => setForm({ ...form, longitude: event.target.value })} /></Field>
