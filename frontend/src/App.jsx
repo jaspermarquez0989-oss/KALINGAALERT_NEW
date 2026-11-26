@@ -281,7 +281,7 @@ export default function App() {
     }
 
     if (checkingAuth) {
-        return <div className="screen-loading"><LoadingState label="Checking your account…" /></div>;
+        return <div className="screen-loading"><LoadingState label="Checking your account…" variant="screen" /></div>;
     }
 
     if (path === '/' && !user) {

@@ -72,8 +72,57 @@ export function Notice({ children, tone = 'error' }) {
     return <div className={`notice notice-${tone}`} role={tone === 'error' ? 'alert' : 'status'}>{children}</div>;
 }
 
-export function LoadingState({ label = 'Loading information…' }) {
-    return <div className="loading-state"><span className="spinner" />{label}</div>;
+function SkeletonLines({ count = 3 }) {
+    return (
+        <div className="skeleton-lines">
+            {Array.from({ length: count }, (_, index) => <span className="skeleton-block" key={index} />)}
+        </div>
+    );
+}
+
+export function LoadingState({ label = 'Loading information…', variant = 'page' }) {
+    if (variant === 'list') {
+        return (
+            <div className="skeleton-loading skeleton-list" role="status" aria-label={label} aria-busy="true">
+                {Array.from({ length: 5 }, (_, index) => (
+                    <div className="skeleton-list-row" key={index} aria-hidden="true">
+                        <div className="skeleton-lines">
+                            <span className="skeleton-block skeleton-row-title" />
+                            <span className="skeleton-block skeleton-row-description" />
+                        </div>
+                        <span className="skeleton-block skeleton-row-badge" />
+                    </div>
+                ))}
+            </div>
+        );
+    }
+
+    if (variant === 'screen') {
+        return (
+            <div className="skeleton-loading skeleton-screen" role="status" aria-label={label} aria-busy="true">
+                <span className="skeleton-block skeleton-screen-mark" aria-hidden="true" />
+                <span className="skeleton-block skeleton-screen-line" aria-hidden="true" />
+            </div>
+        );
+    }
+
+    return (
+        <div className="skeleton-loading skeleton-page" role="status" aria-label={label} aria-busy="true">
+            <div className="skeleton-page-heading" aria-hidden="true">
+                <span className="skeleton-block skeleton-heading-eyebrow" />
+                <span className="skeleton-block skeleton-heading-title" />
+                <span className="skeleton-block skeleton-heading-description" />
+            </div>
+            <div className="skeleton-metrics" aria-hidden="true">
+                {Array.from({ length: 3 }, (_, index) => <div className="skeleton-card skeleton-metric" key={index}><SkeletonLines count={2} /></div>)}
+            </div>
+            <div className="skeleton-panels" aria-hidden="true">
+                <div className="skeleton-card skeleton-panel"><SkeletonLines count={5} /></div>
+                <div className="skeleton-card skeleton-panel"><SkeletonLines count={4} /></div>
+            </div>
+            <div className="skeleton-card skeleton-map" aria-hidden="true"><SkeletonLines count={2} /></div>
+        </div>
+    );
 }
 
 export function EmptyState({ title, children }) {

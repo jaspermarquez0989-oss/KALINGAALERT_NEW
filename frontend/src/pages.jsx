@@ -48,7 +48,7 @@ function FormError({ message }) {
 
 function PageState({ loading, error, children }) {
     if (loading) {
-        return <LoadingState />;
+        return <LoadingState variant="list" />;
     }
 
     if (error) {
