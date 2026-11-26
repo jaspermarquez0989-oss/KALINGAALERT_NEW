@@ -1056,6 +1056,7 @@ function RiskAreaForm({ id }) {
         const aliases = bongabongBarangayAliases[barangay] ?? [];
         const names = [barangay, ...aliases].map((name) => name.toLowerCase());
 
+        setMapFocus(null);
         setLocationLookupError('');
         setLocatingBarangay(barangay);
 
@@ -1106,7 +1107,7 @@ function RiskAreaForm({ id }) {
             const [longitude, latitude] = feature.geometry.coordinates.map(Number);
 
             if (lookupId === locationLookupId.current) {
-                setMapFocus({ latitude, longitude, zoom: 14 });
+                setMapFocus({ latitude, longitude, zoom: 14, barangay });
             }
         } catch (requestError) {
             if (lookupId === locationLookupId.current) {
@@ -1159,6 +1160,7 @@ function RiskAreaForm({ id }) {
                                     focusMapOnBarangay(barangay);
                                 } else {
                                     locationLookupId.current += 1;
+                                    setMapFocus(null);
                                     setLocationLookupError('');
                                     setLocatingBarangay('');
                                 }

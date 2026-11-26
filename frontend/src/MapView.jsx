@@ -149,8 +149,36 @@ export default function MapView({
             attribution: '&copy; OpenStreetMap contributors',
         }).addTo(map);
         map.setView([12.7074, 121.4056], 11);
-        element.__focusLocation = (lat, lng, zoom = 14) => {
+        let barangayMarker = null;
+        element.__focusLocation = (lat, lng, zoom = 14, barangay) => {
             map.setView([lat, lng], zoom, { animate: true });
+
+            const label = document.createElement('span');
+            label.textContent = `${barangay} (selected barangay)`;
+
+            if (barangayMarker) {
+                barangayMarker.setLatLng([lat, lng]);
+                barangayMarker.setTooltipContent(label);
+            } else {
+                barangayMarker = L.circleMarker([lat, lng], {
+                    radius: 9,
+                    color: '#fff',
+                    weight: 3,
+                    fillColor: '#c65c3b',
+                    fillOpacity: 1,
+                }).addTo(map);
+                barangayMarker.bindTooltip(label, {
+                    permanent: true,
+                    direction: 'top',
+                    offset: [0, -8],
+                });
+            }
+        };
+        element.__clearFocusLocation = () => {
+            if (barangayMarker) {
+                map.removeLayer(barangayMarker);
+                barangayMarker = null;
+            }
         };
 
         if (editable) {
@@ -321,6 +349,7 @@ export default function MapView({
             delete element.__undoDrawing;
             delete element.__setCenterLocation;
             delete element.__focusLocation;
+            delete element.__clearFocusLocation;
         };
     }, [areas, editable]);
 
@@ -330,7 +359,10 @@ export default function MapView({
                 focusLocation.latitude,
                 focusLocation.longitude,
                 focusLocation.zoom,
+                focusLocation.barangay,
             );
+        } else {
+            elementRef.current?.__clearFocusLocation?.();
         }
     }, [focusLocation]);
 
