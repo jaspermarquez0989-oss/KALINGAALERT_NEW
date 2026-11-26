@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, saveToken } from './api.js';
 import { formatCoordinatePair, formatLatitude, formatLongitude } from './coordinates.js';
+import { bongabongBarangays } from './data/bongabong-barangays.js';
 import { intensityColorForLevel } from './intensity.js';
 import MapView from './MapView.jsx';
 import {
@@ -1052,8 +1053,16 @@ function RiskAreaForm({ id }) {
                 <form className="stack-form" onSubmit={handleSubmit}>
                     <div className="form-grid">
                         <Field label="Area name"><TextInput required maxLength="150" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
-                        <Field label="Barangay"><TextInput required maxLength="120" value={form.barangay} onChange={(event) => setForm({ ...form, barangay: event.target.value })} /></Field>
-                        <Field label="Sitio / purok (optional)"><TextInput maxLength="120" value={form.sitio} onChange={(event) => setForm({ ...form, sitio: event.target.value })} /></Field>
+                        <Field label="Barangay" hint="Select one of Bongabong's 36 barangays.">
+                            <SelectInput required value={form.barangay} onChange={(event) => setForm({ ...form, barangay: event.target.value })}>
+                                <option value="">Select a barangay</option>
+                                {form.barangay && !bongabongBarangays.includes(form.barangay) && <option value={form.barangay}>{form.barangay} (existing value)</option>}
+                                {bongabongBarangays.map((barangay) => <option key={barangay} value={barangay}>{barangay}</option>)}
+                            </SelectInput>
+                        </Field>
+                        <Field label="Sitio / purok (optional)" hint="Enter the sitio name if known, then set the exact center on the map.">
+                            <TextInput maxLength="120" value={form.sitio} onChange={(event) => setForm({ ...form, sitio: event.target.value })} />
+                        </Field>
                         <Field label="Hazard classification"><TextInput required maxLength="80" placeholder="Flood-prone, landslide-prone…" value={form.classification} onChange={(event) => setForm({ ...form, classification: event.target.value })} /></Field>
                         <Field label="Latitude (decimal degrees)" hint="Positive values are N; negative values are S."><TextInput type="number" step="any" min="-90" max="90" required value={form.latitude} onChange={(event) => setForm({ ...form, latitude: event.target.value })} /></Field>
                         <Field label="Longitude (decimal degrees)" hint="Positive values are E; negative values are W."><TextInput type="number" step="any" min="-180" max="180" required value={form.longitude} onChange={(event) => setForm({ ...form, longitude: event.target.value })} /></Field>
