@@ -95,7 +95,7 @@ export function LandingPage() {
                     <p className="landing-lede">KalingaAlert connects verified PAGASA weather bulletins and BFP fire information with MDRRMO-managed risk areas, then shares published advisories with all residents.</p>
                     <div className="inline-actions">
                         <LinkButton href="/register">Register as a resident</LinkButton>
-                        <LinkButton href="/login" secondary>Staff sign in</LinkButton>
+                        <LinkButton href="/login" secondary>Sign in</LinkButton>
                     </div>
                     <div className="safety-note"><strong>Important</strong><span>This service does not predict hazards or dispatch rescue. Follow official public warnings and emergency instructions.</span></div>
                 </div>
