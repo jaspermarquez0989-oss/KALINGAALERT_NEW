@@ -45,6 +45,8 @@ export default function FireRiskPredictionPage() {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const validationFolds = modelInfo?.validation?.folds ?? [];
+    const score = result ? Math.min(100, Math.max(0, result.score_percent)) : 0;
+    const referenceThreshold = result ? Math.min(100, Math.max(0, result.threshold * 100)) : 50;
 
     useEffect(() => {
         let isCurrent = true;
@@ -218,17 +220,48 @@ export default function FireRiskPredictionPage() {
                 </form>
             </Panel>
             {result && (
-                <Panel title="Model score">
+                <Panel title="24-hour fire occurrence estimate">
                     <div className="fire-risk-result">
-                        <div>
-                            <span className="field-hint">Model score (not a calibrated probability)</span>
-                            <strong>{result.score_percent.toFixed(1)}%</strong>
+                        <div className={`fire-risk-outcome ${result.threshold_met ? 'fire-risk-outcome-raised' : 'fire-risk-outcome-below'}`} role="status" aria-live="polite">
+                            <span className="field-hint">For {form.barangay} · next 24 hours</span>
+                            <strong>{result.threshold_met ? 'Fire may occur' : 'Fire may still occur'}</strong>
+                            <p>
+                                {result.threshold_met
+                                    ? `The model score meets or exceeds the ${referenceThreshold.toFixed(0)} / 100 reference threshold.`
+                                    : `The model score is below the ${referenceThreshold.toFixed(0)} / 100 reference threshold. This is not an all-clear.`}
+                            </p>
                         </div>
-                        <p>
-                            {result.threshold_met
-                                ? <>This score is above the {(result.threshold * 100).toFixed(0)}% reference threshold.</>
-                                : <>This score is below the {(result.threshold * 100).toFixed(0)}% reference threshold. It does not rule out fire.</>}
-                        </p>
+                        <div className="fire-risk-score">
+                            <div className="fire-risk-score-heading">
+                                <span>Model score <small>Not a calibrated probability</small></span>
+                                <strong>{score.toFixed(1)} / 100</strong>
+                            </div>
+                            <div
+                                className="fire-risk-score-track"
+                                role="meter"
+                                aria-label="Fire-risk model score"
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                                aria-valuenow={score}
+                                aria-valuetext={`${score.toFixed(1)} out of 100 model-score points; reference threshold ${referenceThreshold.toFixed(0)}; not a calibrated probability`}
+                                style={{
+                                    background: `linear-gradient(90deg, #f3e8cc 0%, #f3e8cc ${referenceThreshold}%, #f4d9d3 ${referenceThreshold}%, #f4d9d3 100%)`,
+                                }}
+                            >
+                                <span
+                                    className={`fire-risk-score-fill ${result.threshold_met ? 'fire-risk-score-fill-raised' : ''}`}
+                                    style={{ width: `${score}%` }}
+                                />
+                                <span className="fire-risk-score-threshold" aria-hidden="true" style={{ left: `${referenceThreshold}%` }} />
+                            </div>
+                            <div className="fire-risk-score-scale" aria-hidden="true">
+                                <span>0</span>
+                                <span className="fire-risk-score-threshold-label" style={{ left: `${referenceThreshold}%` }}>
+                                    {referenceThreshold.toFixed(0)} reference
+                                </span>
+                                <span>100</span>
+                            </div>
+                        </div>
                     </div>
                     <Notice tone="info">{result.disclaimer}</Notice>
                 </Panel>
