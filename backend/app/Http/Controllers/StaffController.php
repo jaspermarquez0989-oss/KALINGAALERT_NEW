@@ -166,7 +166,11 @@ class StaffController extends Controller
 
     public function audit(Request $request): JsonResponse
     {
-        $entries = AuditLog::query()->with('actor')->orderByDesc('created_at')->paginate(25);
+        $entries = AuditLog::query()
+            ->where('action', '!=', 'system.viewed')
+            ->with('actor')
+            ->orderByDesc('created_at')
+            ->paginate(25);
 
         return response()->json([
             'data' => $entries->getCollection()->map(fn (AuditLog $entry): array => [

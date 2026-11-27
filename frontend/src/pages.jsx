@@ -1371,21 +1371,16 @@ export function AuditPage() {
 
     return (
         <>
-            <PageTitle eyebrow="ACCESS MANAGEMENT" title="Audit history" description="System activity, record changes, and staff access." />
+            <PageTitle eyebrow="ACCESS MANAGEMENT" title="Audit history" description="Important actions including sign-ins, account changes, advisories, and risk areas." />
             <Panel><PageState loading={loading} error={error}>
                 {!data?.data?.length ? <EmptyState title="No audit entries" /> : (
                     <>
                         <div className="table-scroll"><table><thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Record / page</th><th>Details</th></tr></thead><tbody>
                             {data.data.map((entry) => {
-                                const route = entry.metadata?.route;
                                 const subject = entry.subject_id
                                     ? `${entry.subject_type?.split('\\').pop() ?? 'Record'} #${entry.subject_id}`
-                                    : route ?? entry.subject_type?.split('\\').pop() ?? '—';
-                                const action = entry.action === 'system.viewed'
-                                    ? `Viewed${route ? ` · ${route}` : ''}`
-                                    : entry.action;
+                                    : entry.subject_type?.split('\\').pop() ?? '—';
                                 const details = Object.entries(entry.metadata ?? {})
-                                    .filter(([key]) => key !== 'route')
                                     .map(([key, value]) => `${key.replaceAll('_', ' ')}: ${value !== null && typeof value === 'object' ? JSON.stringify(value) : value}`)
                                     .join(' · ');
 
@@ -1393,7 +1388,7 @@ export function AuditPage() {
                                     <tr key={entry.id}>
                                         <td>{formatDate(entry.created_at)}</td>
                                         <td>{entry.actor?.name ?? 'System'}</td>
-                                        <td><code>{action}</code></td>
+                                        <td><code>{entry.action}</code></td>
                                         <td>{subject}</td>
                                         <td>{details || '—'}</td>
                                     </tr>

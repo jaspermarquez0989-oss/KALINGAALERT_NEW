@@ -6,7 +6,6 @@ use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\HazardSourceController;
 use App\Http\Controllers\RiskAreaController;
 use App\Http\Controllers\StaffController;
-use App\Http\Middleware\RecordApiActivity;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->name('api.v1.')->group(function (): void {
@@ -15,7 +14,7 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
         Route::post('/auth/login', [AuthController::class, 'login'])->name('auth.login');
     });
 
-    Route::middleware(['auth:api', RecordApiActivity::class])->group(function (): void {
+    Route::middleware('auth:api')->group(function (): void {
         Route::middleware('role:system_admin,mdrrmo,bfp_officer,alert_operator,resident')->group(function (): void {
             Route::get('/me', [AuthController::class, 'me'])->name('me');
             Route::post('/auth/logout', [AuthController::class, 'logout'])->name('auth.logout');

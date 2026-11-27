@@ -632,37 +632,28 @@ class ApiV1Test extends TestCase
         ]);
     }
 
-    public function test_audit_history_records_sign_in_reads_and_sign_out_without_recording_its_own_reads(): void
+    public function test_audit_history_keeps_authentication_events_and_hides_routine_page_views(): void
     {
         $administrator = $this->makeUser(UserRole::SystemAdministrator->value);
         $token = $this->tokenFor($administrator);
 
-        $this->withToken($token)
-            ->getJson('/api/v1/staff')
-            ->assertOk();
-
-        $viewEntry = AuditLog::query()
-            ->where('actor_id', $administrator->id)
-            ->where('action', 'system.viewed')
-            ->where('subject_type', 'api.v1.staff.index')
-            ->firstOrFail();
-
-        $this->assertSame('GET', $viewEntry->metadata['method']);
-        $this->assertSame('api.v1.staff.index', $viewEntry->metadata['route']);
         $this->assertDatabaseHas('audit_logs', [
             'actor_id' => $administrator->id,
             'action' => 'auth.signed_in',
         ]);
 
-        $this->withToken($token)
-            ->getJson('/api/v1/staff/audit')
-            ->assertOk();
-
-        $this->assertDatabaseMissing('audit_logs', [
+        AuditLog::create([
             'actor_id' => $administrator->id,
             'action' => 'system.viewed',
-            'subject_type' => 'api.v1.staff.audit',
+            'subject_type' => 'api.v1.staff.index',
+            'metadata' => ['route' => 'api.v1.staff.index', 'method' => 'GET', 'status' => 200],
+            'created_at' => now(),
         ]);
+
+        $this->withToken($token)
+            ->getJson('/api/v1/staff/audit')
+            ->assertOk()
+            ->assertJsonMissing(['action' => 'system.viewed']);
 
         $this->withToken($token)
             ->postJson('/api/v1/auth/logout')
