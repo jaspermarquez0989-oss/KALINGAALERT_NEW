@@ -227,7 +227,12 @@ export function RegisterPage({ onAuthenticated }) {
                 <Field label="Full name"><TextInput name="name" autoComplete="name" maxLength="120" required /></Field>
                 <Field label="Email address"><TextInput name="email" type="email" autoComplete="email" maxLength="255" required /></Field>
                 <div className="form-grid">
-                    <Field label="Barangay"><TextInput name="barangay" maxLength="120" required /></Field>
+                    <Field label="Barangay">
+                        <SelectInput name="barangay" required defaultValue="">
+                            <option value="">Select a barangay</option>
+                            {bongabongBarangays.map((barangay) => <option key={barangay} value={barangay}>{barangay}</option>)}
+                        </SelectInput>
+                    </Field>
                     <Field label="Sitio / purok (optional)"><TextInput name="sitio" maxLength="120" /></Field>
                 </div>
                 <Field label="Password" hint="Use at least 10 characters, including letters and numbers.">
@@ -1256,7 +1261,13 @@ export function ProfilePage({ user }) {
                         <Field label="Email address"><TextInput type="email" required maxLength="255" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></Field>
                     </div>
                     {user.role === 'resident' && <div className="form-grid">
-                        <Field label="Barangay"><TextInput required maxLength="120" value={form.barangay} onChange={(event) => setForm({ ...form, barangay: event.target.value })} /></Field>
+                        <Field label="Barangay">
+                            <SelectInput required value={form.barangay} onChange={(event) => setForm({ ...form, barangay: event.target.value })}>
+                                <option value="">Select a barangay</option>
+                                {form.barangay && !bongabongBarangays.includes(form.barangay) && <option value={form.barangay}>{form.barangay} (existing value)</option>}
+                                {bongabongBarangays.map((barangay) => <option key={barangay} value={barangay}>{barangay}</option>)}
+                            </SelectInput>
+                        </Field>
                         <Field label="Sitio / purok"><TextInput maxLength="120" value={form.sitio} onChange={(event) => setForm({ ...form, sitio: event.target.value })} /></Field>
                     </div>}
                     <div className="profile-location">
