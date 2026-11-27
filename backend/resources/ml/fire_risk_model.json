@@ -1,14 +1,14 @@
 {
   "model_type": "standardized_logistic_regression",
-  "model_version": "mdrrmo-bongabong-500m-24h-v3",
+  "model_version": "mdrrmo-bongabong-barangay-500m-24h-v4",
   "model_status": "staff_decision_support",
   "target": "fire_occurred",
   "forecast_horizon": "next_24_hours",
   "prediction_radius_meters": 500,
-  "outcome_scope": "verified fire occurrence within 500 meters of the input coordinates during the next 24 hours",
+  "outcome_scope": "verified fire occurrence within 500 meters of a recorded observation point in the selected barangay during the next 24 hours",
   "measurement_timing": "features are recorded before the forecast period, as confirmed by MDRRMO staff per user report",
   "source_filename": "bongabong_oriental_mindoro_fire_dataset-v2.csv",
-  "source_origin": "MDRRMO staff verified dataset labels, pre-forecast measurement timing, and the 500-meter point-level scope, as confirmed by the user.",
+  "source_origin": "MDRRMO staff verified dataset labels, pre-forecast measurement timing, and the 500-meter point-level scope, as confirmed by the user. Latitude and longitude are excluded from prediction features so staff can assess by barangay.",
   "training_rows": 1200,
   "source_rows": 1200,
   "source_positive_rows": 381,
@@ -26,77 +26,77 @@
     "candidates": [
       {
         "l2_strength": 0.001,
-        "mean_yearly_f1": 0.820376522702104,
-        "mean_yearly_roc_auc": 0.939247924586741,
+        "mean_yearly_f1": 0.824314251639833,
+        "mean_yearly_roc_auc": 0.9400080906428125,
         "folds": [
           {
             "year": 2022,
             "test_rows": 160,
-            "f1": 0.819047619047619,
-            "roc_auc": 0.9464975179260894
+            "f1": 0.8269230769230769,
+            "roc_auc": 0.9476006618863761
           },
           {
             "year": 2023,
             "test_rows": 209,
             "f1": 0.8217054263565892,
-            "roc_auc": 0.9319983312473926
+            "roc_auc": 0.932415519399249
           }
         ]
       },
       {
         "l2_strength": 0.01,
-        "mean_yearly_f1": 0.8461174242424243,
-        "mean_yearly_roc_auc": 0.9460867440708314,
+        "mean_yearly_f1": 0.8451968503937007,
+        "mean_yearly_roc_auc": 0.9464297219750465,
         "folds": [
           {
             "year": 2022,
             "test_rows": 160,
-            "f1": 0.8484848484848485,
-            "roc_auc": 0.9556903842618129
+            "f1": 0.84,
+            "roc_auc": 0.9567935282220996
           },
           {
             "year": 2023,
             "test_rows": 209,
-            "f1": 0.84375,
-            "roc_auc": 0.9364831038798498
+            "f1": 0.8503937007874015,
+            "roc_auc": 0.9360659157279934
           }
         ]
       },
       {
         "l2_strength": 0.1,
         "mean_yearly_f1": 0.8236350574712644,
-        "mean_yearly_roc_auc": 0.9495349030929221,
+        "mean_yearly_roc_auc": 0.9495897266324587,
         "folds": [
           {
             "year": 2022,
             "test_rows": 160,
             "f1": 0.8541666666666667,
-            "roc_auc": 0.9610222467365325
+            "roc_auc": 0.9617576760433904
           },
           {
             "year": 2023,
             "test_rows": 209,
             "f1": 0.7931034482758621,
-            "roc_auc": 0.9380475594493116
+            "roc_auc": 0.9374217772215269
           }
         ]
       },
       {
         "l2_strength": 1.0,
-        "mean_yearly_f1": 0.717590361445783,
-        "mean_yearly_roc_auc": 0.9421304749616926,
+        "mean_yearly_f1": 0.7102439024390244,
+        "mean_yearly_roc_auc": 0.943283092420407,
         "folds": [
           {
             "year": 2022,
             "test_rows": 160,
-            "f1": 0.7951807228915663,
-            "roc_auc": 0.9540356683213826
+            "f1": 0.7804878048780488,
+            "roc_auc": 0.9555065269350984
           },
           {
             "year": 2023,
             "test_rows": 209,
             "f1": 0.6399999999999999,
-            "roc_auc": 0.9302252816020025
+            "roc_auc": 0.9310596579057154
           }
         ]
       }
@@ -108,8 +108,8 @@
     "l2_strength": 0.01,
     "selection_metric": "mean_yearly_f1",
     "optimization": {
-      "objective": 0.2662337972461268,
-      "max_absolute_gradient": 0.00039609374535452433,
+      "objective": 0.2666479912073191,
+      "max_absolute_gradient": 0.0003995636534676476,
       "gradient_tolerance": 0.001,
       "converged": true
     }
@@ -129,18 +129,18 @@
           "test_rows": 262,
           "positive_test_rows": 88,
           "threshold": 0.5,
-          "accuracy": 0.8740458015267175,
+          "accuracy": 0.8778625954198473,
           "majority_class_baseline_accuracy": 0.6641221374045801,
-          "precision": 0.8235294117647058,
+          "precision": 0.8333333333333334,
           "recall": 0.7954545454545454,
-          "specificity": 0.9137931034482759,
-          "f1": 0.8092485549132947,
-          "roc_auc": 0.9509535005224661,
-          "brier_score": 0.08621869349185284,
-          "log_loss": 0.2784163438861507,
+          "specificity": 0.9195402298850575,
+          "f1": 0.8139534883720929,
+          "roc_auc": 0.9502351097178683,
+          "brier_score": 0.08640143053417862,
+          "log_loss": 0.278567361911842,
           "confusion_matrix": {
-            "true_negative": 159,
-            "false_positive": 15,
+            "true_negative": 160,
+            "false_positive": 14,
             "false_negative": 18,
             "true_positive": 70
           }
@@ -148,30 +148,30 @@
         "threshold_sweep": [
           {
             "threshold": 0.25,
-            "precision": 0.7345132743362832,
+            "precision": 0.7280701754385965,
             "recall": 0.9431818181818182,
-            "false_positives": 30,
+            "false_positives": 31,
             "false_negatives": 5
           },
           {
             "threshold": 0.35,
-            "precision": 0.78,
-            "recall": 0.8863636363636364,
-            "false_positives": 22,
-            "false_negatives": 10
+            "precision": 0.77,
+            "recall": 0.875,
+            "false_positives": 23,
+            "false_negatives": 11
           },
           {
             "threshold": 0.5,
-            "precision": 0.8235294117647058,
+            "precision": 0.8333333333333334,
             "recall": 0.7954545454545454,
-            "false_positives": 15,
+            "false_positives": 14,
             "false_negatives": 18
           },
           {
             "threshold": 0.65,
-            "precision": 0.8732394366197183,
+            "precision": 0.8493150684931506,
             "recall": 0.7045454545454546,
-            "false_positives": 9,
+            "false_positives": 11,
             "false_negatives": 26
           }
         ]
@@ -188,28 +188,28 @@
           "test_rows": 252,
           "positive_test_rows": 73,
           "threshold": 0.5,
-          "accuracy": 0.8809523809523809,
+          "accuracy": 0.8849206349206349,
           "majority_class_baseline_accuracy": 0.7103174603174603,
-          "precision": 0.8524590163934426,
-          "recall": 0.7123287671232876,
+          "precision": 0.8548387096774194,
+          "recall": 0.726027397260274,
           "specificity": 0.9497206703910615,
-          "f1": 0.7761194029850746,
-          "roc_auc": 0.9421443330527283,
-          "brier_score": 0.08173346106643062,
-          "log_loss": 0.2671518388040608,
+          "f1": 0.7851851851851852,
+          "roc_auc": 0.9416086324328461,
+          "brier_score": 0.08159090456702445,
+          "log_loss": 0.2670643358563534,
           "confusion_matrix": {
             "true_negative": 170,
             "false_positive": 9,
-            "false_negative": 21,
-            "true_positive": 52
+            "false_negative": 20,
+            "true_positive": 53
           }
         },
         "threshold_sweep": [
           {
             "threshold": 0.25,
-            "precision": 0.6966292134831461,
+            "precision": 0.7045454545454546,
             "recall": 0.8493150684931506,
-            "false_positives": 27,
+            "false_positives": 26,
             "false_negatives": 11
           },
           {
@@ -221,10 +221,10 @@
           },
           {
             "threshold": 0.5,
-            "precision": 0.8524590163934426,
-            "recall": 0.7123287671232876,
+            "precision": 0.8548387096774194,
+            "recall": 0.726027397260274,
             "false_positives": 9,
-            "false_negatives": 21
+            "false_negatives": 20
           },
           {
             "threshold": 0.65,
@@ -247,18 +247,18 @@
           "test_rows": 177,
           "positive_test_rows": 57,
           "threshold": 0.5,
-          "accuracy": 0.8926553672316384,
+          "accuracy": 0.8983050847457628,
           "majority_class_baseline_accuracy": 0.6779661016949152,
-          "precision": 0.8518518518518519,
+          "precision": 0.8679245283018868,
           "recall": 0.8070175438596491,
-          "specificity": 0.9333333333333333,
-          "f1": 0.8288288288288288,
-          "roc_auc": 0.9597953216374269,
-          "brier_score": 0.0736238286057056,
-          "log_loss": 0.2368104845819764,
+          "specificity": 0.9416666666666667,
+          "f1": 0.8363636363636363,
+          "roc_auc": 0.9600877192982457,
+          "brier_score": 0.07350249494708158,
+          "log_loss": 0.23670968251075294,
           "confusion_matrix": {
-            "true_negative": 112,
-            "false_positive": 8,
+            "true_negative": 113,
+            "false_positive": 7,
             "false_negative": 11,
             "true_positive": 46
           }
@@ -266,30 +266,30 @@
         "threshold_sweep": [
           {
             "threshold": 0.25,
-            "precision": 0.726027397260274,
+            "precision": 0.7162162162162162,
             "recall": 0.9298245614035088,
-            "false_positives": 20,
+            "false_positives": 21,
             "false_negatives": 4
           },
           {
             "threshold": 0.35,
-            "precision": 0.8125,
-            "recall": 0.9122807017543859,
+            "precision": 0.8095238095238095,
+            "recall": 0.8947368421052632,
             "false_positives": 12,
-            "false_negatives": 5
+            "false_negatives": 6
           },
           {
             "threshold": 0.5,
-            "precision": 0.8518518518518519,
+            "precision": 0.8679245283018868,
             "recall": 0.8070175438596491,
-            "false_positives": 8,
+            "false_positives": 7,
             "false_negatives": 11
           },
           {
             "threshold": 0.65,
-            "precision": 0.9090909090909091,
+            "precision": 0.9302325581395349,
             "recall": 0.7017543859649122,
-            "false_positives": 4,
+            "false_positives": 3,
             "false_negatives": 17
           }
         ]
@@ -303,48 +303,48 @@
       ],
       "test_rows": 691,
       "threshold": 0.5,
-      "accuracy": 0.8813314037626628,
+      "accuracy": 0.8856729377713459,
       "majority_class_baseline_accuracy": 0.6845151953690304,
-      "precision": 0.84,
-      "recall": 0.7706422018348624,
-      "specificity": 0.9323467230443975,
-      "f1": 0.8038277511961722,
-      "mean_yearly_roc_auc": 0.9509643850708738,
-      "mean_yearly_brier_score": 0.08052532772132968,
-      "mean_yearly_log_loss": 0.26079288909072934,
+      "precision": 0.8492462311557789,
+      "recall": 0.7752293577981652,
+      "specificity": 0.9365750528541226,
+      "f1": 0.8105515587529976,
+      "mean_yearly_roc_auc": 0.9506438204829867,
+      "mean_yearly_brier_score": 0.08049827668276155,
+      "mean_yearly_log_loss": 0.2607804600929828,
       "confusion_matrix": {
-        "true_negative": 441,
-        "false_positive": 32,
-        "false_negative": 50,
-        "true_positive": 168
+        "true_negative": 443,
+        "false_positive": 30,
+        "false_negative": 49,
+        "true_positive": 169
       },
       "threshold_sweep": [
         {
           "threshold": 0.25,
-          "precision": 0.72,
+          "precision": 0.717391304347826,
           "recall": 0.908256880733945,
-          "false_positives": 77,
+          "false_positives": 78,
           "false_negatives": 20
         },
         {
           "threshold": 0.35,
-          "precision": 0.7786885245901639,
-          "recall": 0.8715596330275229,
-          "false_positives": 54,
-          "false_negatives": 28
+          "precision": 0.7736625514403292,
+          "recall": 0.8623853211009175,
+          "false_positives": 55,
+          "false_negatives": 30
         },
         {
           "threshold": 0.5,
-          "precision": 0.84,
-          "recall": 0.7706422018348624,
-          "false_positives": 32,
-          "false_negatives": 50
+          "precision": 0.8492462311557789,
+          "recall": 0.7752293577981652,
+          "false_positives": 30,
+          "false_negatives": 49
         },
         {
           "threshold": 0.65,
-          "precision": 0.9074074074074074,
+          "precision": 0.901840490797546,
           "recall": 0.6743119266055045,
-          "false_positives": 15,
+          "false_positives": 16,
           "false_negatives": 71
         }
       ]
@@ -352,15 +352,13 @@
   },
   "baseline_comparison": {
     "majority_class_accuracy": 0.6845151953690304,
-    "model_accuracy": 0.8813314037626628,
-    "accuracy_lift": 0.19681620839363245
+    "model_accuracy": 0.8856729377713459,
+    "accuracy_lift": 0.20115774240231554
   },
   "threshold": 0.5,
-  "intercept": -1.297308602750529,
+  "intercept": -1.3029708717373871,
   "features": [
     "month",
-    "latitude",
-    "longitude",
     "elevation_m",
     "temperature_c",
     "relative_humidity_pct",
@@ -418,69 +416,65 @@
     "season=Wet_Habagat_Season"
   ],
   "weights": [
-    0.0549472613314003,
-    -0.010108479297041137,
-    -0.19835503778557592,
-    -0.09492954055439842,
-    0.3299901805531858,
-    -1.013431245428252,
-    0.7582540381794273,
-    -0.8465501151203325,
-    1.0101165636530147,
-    -0.29390796967233596,
-    0.4179064161473336,
-    -0.16293179331646365,
-    -0.02454878029190582,
-    -0.15402777560731487,
-    0.13802821652657957,
-    0.07556635573295162,
-    -0.06804314949061888,
-    -0.05177901731127637,
-    0.0834357809845098,
-    0.054115153556143686,
-    -0.09757058409507259,
-    0.09384637775854392,
-    0.13968455041215788,
-    0.1664245110974387,
-    0.05506746384390499,
-    0.12837028937447492,
-    0.16149436510803244,
-    -0.13632377348758434,
-    -0.20914403260299996,
-    0.038329181224720496,
-    0.1394518895266872,
-    -0.1899342970048514,
-    0.09991063591718796,
-    -0.12579940005447354,
-    -0.001833556662270649,
-    -0.23825331688558096,
-    -0.12862679289343598,
-    0.0291264032411919,
-    0.02166627137230755,
-    0.11108053904449162,
-    0.012773301767498552,
-    -0.014517967324048793,
-    -0.037579820195020285,
-    -0.029501974036573776,
-    0.05131147149188205,
-    -0.02931736250425838,
-    -0.1730562358566527,
-    -0.06499771149581281,
-    0.048888193615217145,
-    -0.02234646037048658,
-    -0.20436165623936275,
-    -0.07111581607642048,
-    -0.00833010044874204,
-    0.18412170921325713,
-    0.02029650800983112,
-    0.06653236268694909,
-    -0.09562278698222706,
-    -0.07264539161664531
+    0.05489422255692208,
+    0.029089665104340565,
+    0.3267487766395054,
+    -1.012963358205861,
+    0.7557483704135127,
+    -0.8440164374962821,
+    1.0054889366547641,
+    -0.2941473909207868,
+    0.4206882692607824,
+    -0.12501550210938164,
+    -0.016021040169746082,
+    -0.16175229594162963,
+    0.12850597255216797,
+    0.07148731815058063,
+    -0.0703091134676563,
+    -0.058748606496816666,
+    0.08760160769276966,
+    0.05441330858521125,
+    -0.1039005611153208,
+    0.08350360869051825,
+    0.14406560155527084,
+    0.1871270165012426,
+    0.06725570361404122,
+    0.1283634033046198,
+    0.16484048699224818,
+    -0.11746757290375191,
+    -0.2260551614124726,
+    0.05180374037157637,
+    0.11923428506679315,
+    -0.1871420023788841,
+    0.09524679926527513,
+    -0.12039913926217556,
+    0.0019982560171049463,
+    -0.242828968678982,
+    -0.12674415967452957,
+    0.034958321691433404,
+    0.016282317813302298,
+    0.12624522132325613,
+    0.00873264630029847,
+    -0.009567921359763266,
+    -0.029510335430968992,
+    -0.03724839499825964,
+    0.05368407242856037,
+    -0.022528725600062114,
+    -0.18069605209149786,
+    -0.06834754985681343,
+    0.03529456930883363,
+    -0.019260993572628744,
+    -0.24731342992106164,
+    -0.09754918886030481,
+    0.010475360556881834,
+    0.24113509736941152,
+    0.009910850983222813,
+    0.06313771089623998,
+    -0.09488301762550981,
+    -0.07085699671520955
   ],
   "numeric_means": {
     "month": 6.6725,
-    "latitude": 12.733486916666667,
-    "longitude": 121.46201018333333,
     "elevation_m": 50.4775,
     "temperature_c": 29.634500000000003,
     "relative_humidity_pct": 79.94616666666666,
@@ -494,8 +488,6 @@
   },
   "numeric_scales": {
     "month": 3.4629337875083124,
-    "latitude": 0.03752496715068147,
-    "longitude": 0.029252466764355726,
     "elevation_m": 58.38488240760617,
     "temperature_c": 2.2972178281564855,
     "relative_humidity_pct": 13.334116717611591,
@@ -511,14 +503,6 @@
     "month": {
       "minimum": 1.0,
       "maximum": 12.0
-    },
-    "latitude": {
-      "minimum": 12.64843,
-      "maximum": 12.81438
-    },
-    "longitude": {
-      "minimum": 121.37311,
-      "maximum": 121.50214
     },
     "elevation_m": {
       "minimum": 1.0,
@@ -616,6 +600,7 @@
   },
   "limitations": [
     "Validation reflects historical holdouts from Bongabong and does not establish accuracy outside the municipality or in changed conditions.",
+    "The model uses barangay rather than exact coordinates and cannot distinguish risk between locations within the same barangay.",
     "Some verified fires were missed at the reference threshold; a score below threshold is not an all-clear.",
     "Model scores have not been independently calibrated.",
     "Smoke, CO, incident type, risk score, and risk level were excluded to reduce post-event and target leakage.",

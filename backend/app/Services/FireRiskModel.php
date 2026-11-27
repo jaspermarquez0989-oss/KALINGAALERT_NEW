@@ -9,8 +9,6 @@ class FireRiskModel
 {
     private const NUMERIC_FEATURES = [
         'month',
-        'latitude',
-        'longitude',
         'elevation_m',
         'temperature_c',
         'relative_humidity_pct',

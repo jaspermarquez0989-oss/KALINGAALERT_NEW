@@ -8,8 +8,6 @@ from pathlib import Path
 
 NUMERIC_FEATURES = [
     "month",
-    "latitude",
-    "longitude",
     "elevation_m",
     "temperature_c",
     "relative_humidity_pct",
@@ -439,15 +437,15 @@ def main():
 
     model = {
         "model_type": "standardized_logistic_regression",
-        "model_version": "mdrrmo-bongabong-500m-24h-v3",
+        "model_version": "mdrrmo-bongabong-barangay-500m-24h-v4",
         "model_status": "staff_decision_support",
         "target": TARGET,
         "forecast_horizon": "next_24_hours",
         "prediction_radius_meters": 500,
-        "outcome_scope": "verified fire occurrence within 500 meters of the input coordinates during the next 24 hours",
+        "outcome_scope": "verified fire occurrence within 500 meters of a recorded observation point in the selected barangay during the next 24 hours",
         "measurement_timing": "features are recorded before the forecast period, as confirmed by MDRRMO staff per user report",
         "source_filename": args.csv_path.name,
-        "source_origin": "MDRRMO staff verified dataset labels, pre-forecast measurement timing, and the 500-meter point-level scope, as confirmed by the user.",
+        "source_origin": "MDRRMO staff verified dataset labels, pre-forecast measurement timing, and the 500-meter point-level scope, as confirmed by the user. Latitude and longitude are excluded from prediction features so staff can assess by barangay.",
         "training_rows": len(rows),
         "source_rows": len(rows),
         "source_positive_rows": positive_count,
@@ -484,6 +482,7 @@ def main():
         "categories": categories,
         "limitations": [
             "Validation reflects historical holdouts from Bongabong and does not establish accuracy outside the municipality or in changed conditions.",
+            "The model uses barangay rather than exact coordinates and cannot distinguish risk between locations within the same barangay.",
             "Some verified fires were missed at the reference threshold; a score below threshold is not an all-clear.",
             "Model scores have not been independently calibrated.",
             "Smoke, CO, incident type, risk score, and risk level were excluded to reduce post-event and target leakage.",

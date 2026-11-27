@@ -18,8 +18,6 @@ def sample_row(year, label, offset):
     }
     row.update({
         "month": 1 + offset % 12,
-        "latitude": 12.7 + offset * 0.001,
-        "longitude": 121.4 + offset * 0.001,
         "temperature_c": 25 + label * 4 + offset * 0.1,
         "relative_humidity_pct": 80 - label * 20,
         "wind_speed_kmh": 8 + label * 4,
@@ -46,6 +44,8 @@ class FireRiskTrainingTests(unittest.TestCase):
 
         self.assertEqual(ranges["temperature_c"], {"minimum": 25.0, "maximum": 29.1})
         self.assertEqual(ranges["month"], {"minimum": 1, "maximum": 2})
+        self.assertNotIn("latitude", ranges)
+        self.assertNotIn("longitude", ranges)
 
     def test_evaluation_reports_threshold_errors_and_score_quality(self):
         metrics = evaluate(

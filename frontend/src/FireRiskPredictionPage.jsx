@@ -11,8 +11,6 @@ import {
 } from './ui.jsx';
 
 const numericInputs = [
-    { name: 'latitude', label: 'Latitude', hint: 'Decimal degrees', min: -90, max: 90, step: 'any' },
-    { name: 'longitude', label: 'Longitude', hint: 'Decimal degrees', min: -180, max: 180, step: 'any' },
     { name: 'elevation_m', label: 'Elevation', hint: 'Meters above sea level', min: -500, max: 9000, step: 'any' },
     { name: 'temperature_c', label: 'Temperature', hint: 'Degrees Celsius', min: -50, max: 60, step: 'any' },
     { name: 'relative_humidity_pct', label: 'Relative humidity', hint: 'Percent', min: 0, max: 100, step: 'any' },
@@ -95,8 +93,8 @@ export default function FireRiskPredictionPage() {
         <>
             <PageTitle
                 eyebrow="STAFF DECISION SUPPORT"
-                title="24-hour fire occurrence within 500 meters"
-                description="Estimate nearby fire occurrence from pre-forecast conditions at the selected coordinates."
+                title="24-hour fire occurrence by barangay"
+                description="Estimate fire occurrence using pre-forecast conditions for the selected barangay."
             />
             <Notice tone="info">
                 Staff decision support only. Enter verified readings before the forecast period; no live weather feed or sensor is connected. This score does not create an alert. A below-threshold result is not an all-clear—continue to follow official monitoring and response procedures.
@@ -160,7 +158,7 @@ export default function FireRiskPredictionPage() {
             </Panel>
             <Panel title="Enter conditions before the next 24 hours" className="fire-risk-form-panel">
                 <p className="muted">
-                    Provide observations for the coordinates you want to assess. The target is a verified fire within 500 meters during the next 24 hours. The model requires every field; missing data is not automatically filled in.
+                    Select a barangay and provide its pre-forecast observations. The target is verified fire occurrence within 500 meters of a recorded observation point in that barangay during the next 24 hours. The model does not distinguish locations within a barangay and requires every field; missing data is not automatically filled in.
                 </p>
                 <form className="stack-form" onSubmit={submitPrediction}>
                     <div className="form-grid">

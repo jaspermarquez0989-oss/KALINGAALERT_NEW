@@ -834,11 +834,13 @@ class ApiV1Test extends TestCase
         $this->withToken($managerToken)
             ->getJson('/api/v1/fire-risk/model-info')
             ->assertOk()
-            ->assertJsonPath('data.model_version', 'mdrrmo-bongabong-500m-24h-v3')
+            ->assertJsonPath('data.model_version', 'mdrrmo-bongabong-barangay-500m-24h-v4')
             ->assertJsonPath('data.model_status', 'staff_decision_support')
             ->assertJsonPath('data.forecast_horizon', 'next_24_hours')
             ->assertJsonPath('data.prediction_radius_meters', 500)
-            ->assertJsonPath('data.outcome_scope', 'verified fire occurrence within 500 meters of the input coordinates during the next 24 hours')
+            ->assertJsonPath('data.outcome_scope', 'verified fire occurrence within 500 meters of a recorded observation point in the selected barangay during the next 24 hours')
+            ->assertJsonMissingPath('data.numeric_ranges.latitude')
+            ->assertJsonMissingPath('data.numeric_ranges.longitude')
             ->assertJsonPath('data.training_rows', 1200)
             ->assertJsonPath('data.validation.strategy', 'walk_forward_calendar_years')
             ->assertJsonCount(3, 'data.validation.folds')
@@ -846,8 +848,6 @@ class ApiV1Test extends TestCase
 
         $input = [
             'month' => 1,
-            'latitude' => 12.74207,
-            'longitude' => 121.45518,
             'elevation_m' => 48,
             'temperature_c' => 25,
             'relative_humidity_pct' => 70.5,
@@ -868,15 +868,14 @@ class ApiV1Test extends TestCase
                 ...$input,
                 'temperature_c' => 1000,
                 'barangay' => 'Unknown',
-                'latitude' => 90,
             ])
             ->assertUnprocessable()
-            ->assertJsonValidationErrors(['temperature_c', 'barangay', 'latitude']);
+            ->assertJsonValidationErrors(['temperature_c', 'barangay']);
 
         $prediction = $this->withToken($managerToken)
             ->postJson('/api/v1/fire-risk/predict', $input)
             ->assertOk()
-            ->assertJsonPath('data.model_version', 'mdrrmo-bongabong-500m-24h-v3')
+            ->assertJsonPath('data.model_version', 'mdrrmo-bongabong-barangay-500m-24h-v4')
             ->assertJsonPath('data.threshold', 0.5)
             ->assertJsonStructure([
                 'data' => ['prediction', 'threshold_met', 'score_percent', 'disclaimer'],
