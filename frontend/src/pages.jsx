@@ -1366,18 +1366,58 @@ export function StaffFormPage() {
 }
 
 export function AuditPage() {
-    const { data, loading, error } = useApiData('/staff/audit');
+    const [page, setPage] = useState(1);
+    const { data, loading, error } = useApiData(`/staff/audit?page=${page}`);
 
     return (
         <>
-            <PageTitle eyebrow="ACCESS MANAGEMENT" title="Audit history" description="Recent changes to official records and staff access." />
+            <PageTitle eyebrow="ACCESS MANAGEMENT" title="Audit history" description="System activity, record changes, and staff access." />
             <Panel><PageState loading={loading} error={error}>
                 {!data?.data?.length ? <EmptyState title="No audit entries" /> : (
-                    <div className="table-scroll"><table><thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Record</th><th>Details</th></tr></thead><tbody>
-                        {data.data.map((entry) => <tr key={entry.id}>
-                            <td>{formatDate(entry.created_at)}</td><td>{entry.actor?.name ?? 'System'}</td><td><code>{entry.action}</code></td><td>{entry.subject_type?.split('\\').pop() ?? '—'} #{entry.subject_id ?? '—'}</td><td>{Object.entries(entry.metadata ?? {}).map(([key, value]) => `${key.replaceAll('_', ' ')}: ${typeof value === 'object' ? JSON.stringify(value) : value}`).join(' · ') || '—'}</td>
-                        </tr>)}
-                    </tbody></table></div>
+                    <>
+                        <div className="table-scroll"><table><thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Record / page</th><th>Details</th></tr></thead><tbody>
+                            {data.data.map((entry) => {
+                                const route = entry.metadata?.route;
+                                const subject = entry.subject_id
+                                    ? `${entry.subject_type?.split('\\').pop() ?? 'Record'} #${entry.subject_id}`
+                                    : route ?? entry.subject_type?.split('\\').pop() ?? '—';
+                                const action = entry.action === 'system.viewed'
+                                    ? `Viewed${route ? ` · ${route}` : ''}`
+                                    : entry.action;
+                                const details = Object.entries(entry.metadata ?? {})
+                                    .filter(([key]) => key !== 'route')
+                                    .map(([key, value]) => `${key.replaceAll('_', ' ')}: ${value !== null && typeof value === 'object' ? JSON.stringify(value) : value}`)
+                                    .join(' · ');
+
+                                return (
+                                    <tr key={entry.id}>
+                                        <td>{formatDate(entry.created_at)}</td>
+                                        <td>{entry.actor?.name ?? 'System'}</td>
+                                        <td><code>{action}</code></td>
+                                        <td>{subject}</td>
+                                        <td>{details || '—'}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody></table></div>
+                        {data.meta?.last_page > 1 && (
+                            <nav className="advisory-pagination" aria-label="Audit history pages">
+                                <button
+                                    aria-label="Previous page"
+                                    disabled={page <= 1}
+                                    onClick={() => setPage((current) => Math.max(1, current - 1))}
+                                    type="button"
+                                >‹</button>
+                                <span aria-live="polite">Page {data.meta.current_page} of {data.meta.last_page} · {data.meta.total} actions</span>
+                                <button
+                                    aria-label="Next page"
+                                    disabled={page >= data.meta.last_page}
+                                    onClick={() => setPage((current) => Math.min(data.meta.last_page, current + 1))}
+                                    type="button"
+                                >›</button>
+                            </nav>
+                        )}
+                    </>
                 )}
             </PageState></Panel>
         </>

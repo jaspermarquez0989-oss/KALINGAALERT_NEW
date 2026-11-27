@@ -6,6 +6,7 @@ use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\UserResource;
 use App\Models\User;
+use App\Services\AuditRecorder;
 use App\Services\RecipientMatcher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,7 +16,7 @@ use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
 {
-    public function register(Request $request, RecipientMatcher $matcher): JsonResponse
+    public function register(Request $request, RecipientMatcher $matcher, AuditRecorder $audit): JsonResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:120'],
@@ -27,7 +28,7 @@ class AuthController extends Controller
             'password' => ['required', 'confirmed', Password::min(10)->letters()->numbers()],
         ]);
 
-        $user = DB::transaction(function () use ($validated, $matcher): User {
+        $user = DB::transaction(function () use ($validated, $matcher, $audit): User {
             $user = User::create([
                 'name' => $validated['name'],
                 'email' => $validated['email'],
@@ -41,6 +42,7 @@ class AuthController extends Controller
             ]);
 
             $matcher->deliverActiveAlertsToResident($user);
+            $audit->record($user, 'auth.registered', $user, ['role' => $user->role]);
 
             return $user;
         });
@@ -48,7 +50,7 @@ class AuthController extends Controller
         return $this->tokenResponse($request, Auth::guard('api')->login($user), $user, 201);
     }
 
-    public function login(Request $request): JsonResponse
+    public function login(Request $request, AuditRecorder $audit): JsonResponse
     {
         $credentials = $request->validate([
             'email' => ['required', 'email'],
@@ -61,7 +63,10 @@ class AuthController extends Controller
             return response()->json(['message' => 'The supplied credentials could not be verified.'], 401);
         }
 
-        return $this->tokenResponse($request, $token, Auth::guard('api')->user());
+        $user = Auth::guard('api')->user();
+        $audit->record($user, 'auth.signed_in', $user, ['role' => $user->role]);
+
+        return $this->tokenResponse($request, $token, $user);
     }
 
     public function me(Request $request): JsonResponse
@@ -71,8 +76,10 @@ class AuthController extends Controller
         ]);
     }
 
-    public function logout(): JsonResponse
+    public function logout(Request $request, AuditRecorder $audit): JsonResponse
     {
+        $user = $request->user();
+        $audit->record($user, 'auth.signed_out', $user, ['role' => $user->role]);
         Auth::guard('api')->logout();
 
         return response()->json(['message' => 'Logged out successfully.']);

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\UserRole;
 use App\Models\User;
+use App\Services\AuditRecorder;
 use App\Services\RecipientMatcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,7 +14,7 @@ use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
 {
-    public function login(Request $request): RedirectResponse
+    public function login(Request $request, AuditRecorder $audit): RedirectResponse
     {
         $credentials = $request->validate([
             'email' => ['required', 'email'],
@@ -27,11 +28,12 @@ class AuthController extends Controller
         }
 
         $request->session()->regenerate();
+        $audit->record($request->user(), 'auth.signed_in', $request->user(), ['role' => $request->user()->role]);
 
         return redirect()->intended(route('dashboard'));
     }
 
-    public function register(Request $request, RecipientMatcher $matcher): RedirectResponse
+    public function register(Request $request, RecipientMatcher $matcher, AuditRecorder $audit): RedirectResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:120'],
@@ -43,7 +45,7 @@ class AuthController extends Controller
             'password' => ['required', 'confirmed', Password::min(10)->letters()->numbers()],
         ]);
 
-        $user = DB::transaction(function () use ($validated, $matcher): User {
+        $user = DB::transaction(function () use ($validated, $matcher, $audit): User {
             $user = User::create([
                 'name' => $validated['name'],
                 'email' => $validated['email'],
@@ -57,6 +59,7 @@ class AuthController extends Controller
             ]);
 
             $matcher->deliverActiveAlertsToResident($user);
+            $audit->record($user, 'auth.registered', $user, ['role' => $user->role]);
 
             return $user;
         });
@@ -67,8 +70,10 @@ class AuthController extends Controller
         return redirect()->route('dashboard')->with('status', 'Your resident account is ready.');
     }
 
-    public function logout(Request $request): RedirectResponse
+    public function logout(Request $request, AuditRecorder $audit): RedirectResponse
     {
+        $user = $request->user();
+        $audit->record($user, 'auth.signed_out', $user, ['role' => $user->role]);
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();

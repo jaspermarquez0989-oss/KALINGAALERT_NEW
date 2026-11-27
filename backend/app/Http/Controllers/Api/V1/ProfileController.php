@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\UserResource;
+use App\Services\AuditRecorder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -20,7 +21,7 @@ class ProfileController extends Controller
         ]);
     }
 
-    public function update(Request $request): JsonResponse
+    public function update(Request $request, AuditRecorder $audit): JsonResponse
     {
         $user = $request->user();
         $validated = $request->validate([
@@ -62,6 +63,10 @@ class ProfileController extends Controller
         }
 
         $user->update($attributes);
+        $audit->record($user, 'profile.updated', $user, [
+            'changed_fields' => array_values(array_diff(array_keys($attributes), ['password'])),
+            'password_changed' => array_key_exists('password', $attributes),
+        ]);
 
         return response()->json([
             'message' => 'Profile updated.',

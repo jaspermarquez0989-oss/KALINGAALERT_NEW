@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\UserRole;
 use App\Models\Alert;
+use App\Models\AuditLog;
 use App\Models\HazardSource;
 use App\Models\RiskArea;
 use App\Models\User;
@@ -40,6 +41,10 @@ class ApiV1Test extends TestCase
         $this->assertDatabaseHas('users', [
             'email' => 'api-resident@example.com',
             'role' => UserRole::CommunityResident->value,
+        ]);
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $response->json('data.id'),
+            'action' => 'auth.registered',
         ]);
 
         $this->withToken($response->json('access_token'))
@@ -620,6 +625,53 @@ class ApiV1Test extends TestCase
             'barangay' => 'Masaguisi',
         ]);
         $this->assertTrue(Hash::check('UpdatedPassword123', $resident->fresh()->password));
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $resident->id,
+            'action' => 'profile.updated',
+            'subject_id' => $resident->id,
+        ]);
+    }
+
+    public function test_audit_history_records_sign_in_reads_and_sign_out_without_recording_its_own_reads(): void
+    {
+        $administrator = $this->makeUser(UserRole::SystemAdministrator->value);
+        $token = $this->tokenFor($administrator);
+
+        $this->withToken($token)
+            ->getJson('/api/v1/staff')
+            ->assertOk();
+
+        $viewEntry = AuditLog::query()
+            ->where('actor_id', $administrator->id)
+            ->where('action', 'system.viewed')
+            ->where('subject_type', 'api.v1.staff.index')
+            ->firstOrFail();
+
+        $this->assertSame('GET', $viewEntry->metadata['method']);
+        $this->assertSame('api.v1.staff.index', $viewEntry->metadata['route']);
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $administrator->id,
+            'action' => 'auth.signed_in',
+        ]);
+
+        $this->withToken($token)
+            ->getJson('/api/v1/staff/audit')
+            ->assertOk();
+
+        $this->assertDatabaseMissing('audit_logs', [
+            'actor_id' => $administrator->id,
+            'action' => 'system.viewed',
+            'subject_type' => 'api.v1.staff.audit',
+        ]);
+
+        $this->withToken($token)
+            ->postJson('/api/v1/auth/logout')
+            ->assertOk();
+
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $administrator->id,
+            'action' => 'auth.signed_out',
+        ]);
     }
 
     public function test_staff_api_restricts_management_and_records_staff_changes(): void

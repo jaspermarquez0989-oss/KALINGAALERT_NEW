@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\UserRole;
+use App\Services\AuditRecorder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -10,7 +11,7 @@ use Illuminate\Validation\Rules\Password;
 
 class ProfileController extends Controller
 {
-    public function update(Request $request): RedirectResponse
+    public function update(Request $request, AuditRecorder $audit): RedirectResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:120'],
@@ -42,6 +43,10 @@ class ProfileController extends Controller
         }
 
         $request->user()->update($attributes);
+        $audit->record($request->user(), 'profile.updated', $request->user(), [
+            'changed_fields' => array_values(array_diff(array_keys($attributes), ['password'])),
+            'password_changed' => array_key_exists('password', $attributes),
+        ]);
 
         return back()->with('status', 'Your account details and alert location were updated.');
     }
