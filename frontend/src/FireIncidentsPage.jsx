@@ -261,21 +261,21 @@ export default function FireIncidentsPage({ user }) {
                                     {incidentTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                                 </SelectInput>
                             </Field>
+                        </div>
+                        <div className="form-grid">
                             <Field label="Recorded cause">
                                 <SelectInput required value={form.cause} onChange={(event) => updateField('cause', event.target.value)}>
                                     {incidentCauses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                                 </SelectInput>
                             </Field>
-                        </div>
-                        <div className="form-grid">
+                            <Field label="Injuries">
+                                <TextInput type="number" min="0" step="1" required value={form.injuries} onChange={(event) => updateField('injuries', event.target.value)} />
+                            </Field>
                             <Field label="Latitude" hint="Use coordinates from the official incident record.">
                                 <TextInput type="number" step="any" min="-90" max="90" required value={form.latitude} onChange={(event) => updateField('latitude', event.target.value)} />
                             </Field>
                             <Field label="Longitude">
                                 <TextInput type="number" step="any" min="-180" max="180" required value={form.longitude} onChange={(event) => updateField('longitude', event.target.value)} />
-                            </Field>
-                            <Field label="Injuries">
-                                <TextInput type="number" min="0" step="1" required value={form.injuries} onChange={(event) => updateField('injuries', event.target.value)} />
                             </Field>
                             <Field label="Fatalities">
                                 <TextInput type="number" min="0" step="1" required value={form.fatalities} onChange={(event) => updateField('fatalities', event.target.value)} />
