@@ -665,7 +665,7 @@ class ApiV1Test extends TestCase
         ]);
     }
 
-    public function test_fire_incident_records_require_independent_bfp_review_and_only_verified_cases_export(): void
+    public function test_fire_incident_records_allow_independent_bfp_review_and_only_verified_cases_export(): void
     {
         $submitter = $this->makeUser(UserRole::BfpOfficer->value);
         $reviewer = $this->makeUser(UserRole::BfpOfficer->value);
@@ -705,7 +705,10 @@ class ApiV1Test extends TestCase
         $incidentId = $created->json('data.id');
 
         $this->withToken($submitterToken)
-            ->patchJson("/api/v1/fire-incidents/{$incidentId}/review", ['decision' => 'verified'])
+            ->patchJson("/api/v1/fire-incidents/{$incidentId}/review", [
+                'decision' => 'rejected',
+                'review_notes' => 'The submitter cannot reject their own record.',
+            ])
             ->assertForbidden();
 
         $this->clearJwtRequestState();
@@ -795,6 +798,32 @@ class ApiV1Test extends TestCase
             'action' => 'fire_incident.verified',
             'subject_id' => $incidentId,
         ]);
+    }
+
+    public function test_bfp_submitter_can_verify_their_own_fire_incident(): void
+    {
+        $submitter = $this->makeUser(UserRole::BfpOfficer->value);
+        $submitterToken = $this->tokenFor($submitter);
+        $incident = $this->withToken($submitterToken)
+            ->postJson('/api/v1/fire-incidents', [
+                'occurred_at' => now()->subDay()->toIso8601String(),
+                'barangay' => 'Poblacion',
+                'incident_type' => 'structure',
+                'cause' => 'electrical',
+                'latitude' => 12.73,
+                'longitude' => 121.36,
+                'source_reference' => 'BFP-SELF-VERIFY-001',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.verification_status', 'pending');
+        $incidentId = $incident->json('data.id');
+
+        $this->clearJwtRequestState();
+        $this->withToken($submitterToken)
+            ->patchJson("/api/v1/fire-incidents/{$incidentId}/review", ['decision' => 'verified'])
+            ->assertOk()
+            ->assertJsonPath('data.verification_status', 'verified')
+            ->assertJsonPath('data.reviewer.id', $submitter->id);
     }
 
     public function test_staff_api_restricts_management_and_records_staff_changes(): void

@@ -200,8 +200,11 @@ class FireIncidentController extends Controller
             ],
         ]);
 
-        if ($fireIncident->submitted_by === $request->user()->id) {
-            abort(403, 'A BFP officer must review an incident submitted by a different user.');
+        if (
+            $fireIncident->submitted_by === $request->user()->id
+            && $validated['decision'] === 'rejected'
+        ) {
+            abort(403, 'A BFP officer cannot reject their own incident submission.');
         }
 
         $incident = DB::transaction(function () use ($fireIncident, $request, $validated, $audit): FireIncident {

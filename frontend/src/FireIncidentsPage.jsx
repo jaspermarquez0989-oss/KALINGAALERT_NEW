@@ -197,7 +197,7 @@ export default function FireIncidentsPage({ user }) {
             setFilter('pending');
             setPage(1);
             setRefreshKey((key) => key + 1);
-            setNotice('Incident submitted. It will be included in the verified dataset only after BFP review.');
+            setNotice('Incident submitted. It will be included in the verified dataset after a BFP officer verifies it.');
         } catch (requestError) {
             setError(requestError.message);
         } finally {
@@ -266,7 +266,7 @@ export default function FireIncidentsPage({ user }) {
             <PageTitle
                 eyebrow="BFP INCIDENT RECORDS"
                 title="Historical fire incidents"
-                description="Record incidents from official sources, then have a different BFP officer verify each entry before it enters the training dataset."
+                description="Record incidents from official sources and verify them against their BFP source before they enter the training dataset."
             />
             {error && <Notice>{error}</Notice>}
             {notice && <Notice tone="success">{notice}</Notice>}
@@ -353,7 +353,7 @@ export default function FireIncidentsPage({ user }) {
                             <option value="rejected">Rejected</option>
                         </SelectInput>
                     </Field>
-                    {canReview && <span className="field-hint">Only a different BFP officer can verify a submission.</span>}
+                    {canReview && <span className="field-hint">BFP officers may verify their own submissions; another officer must reject them.</span>}
                 </div>
                 {loading ? <LoadingState variant="list" label="Loading fire incident records..." /> : (
                     <>
@@ -376,7 +376,10 @@ export default function FireIncidentsPage({ user }) {
                                         <td>
                                             {canReview && incident.verification_status === 'pending'
                                                 ? incident.submitted_by?.id === user.id
-                                                    ? <span className="field-hint">Awaiting another BFP officer</span>
+                                                    ? <div className="inline-actions">
+                                                        <button className="text-button" disabled={busyId === incident.id} onClick={() => reviewIncident(incident, 'verified')} type="button">Verify</button>
+                                                        <span className="field-hint">Submitted by you</span>
+                                                    </div>
                                                     : <div className="inline-actions">
                                                         <button className="text-button" disabled={busyId === incident.id} onClick={() => reviewIncident(incident, 'verified')} type="button">Verify</button>
                                                         <button className="text-button button-danger-text" disabled={busyId === incident.id} onClick={() => reviewIncident(incident, 'rejected')} type="button">Reject</button>
