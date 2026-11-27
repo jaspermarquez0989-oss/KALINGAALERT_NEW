@@ -138,7 +138,6 @@ class FireIncidentController extends Controller
         $user = $request->user();
         $incidents = FireIncident::query()
             ->where('verification_status', 'verified')
-            ->where('barangay', $user->barangay)
             ->orderByDesc('reviewed_at')
             ->limit(100)
             ->get([
@@ -227,7 +226,6 @@ class FireIncidentController extends Controller
                 $residents = User::query()
                     ->where('role', UserRole::CommunityResident->value)
                     ->where('is_active', true)
-                    ->where('barangay', $incident->barangay)
                     ->get();
                 Notification::send($residents, new FireIncidentVerified($incident));
             }

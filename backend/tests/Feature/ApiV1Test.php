@@ -746,8 +746,9 @@ class ApiV1Test extends TestCase
         $this->withToken($otherResidentToken)
             ->getJson('/api/v1/my/fire-incidents')
             ->assertOk()
-            ->assertJsonCount(0, 'data')
-            ->assertJsonPath('meta.unread_count', 0);
+            ->assertJsonPath('data.0.id', $incidentId)
+            ->assertJsonPath('meta.unread_count', 1)
+            ->assertJsonPath('notifications.0.fire_incident_id', $incidentId);
 
         $this->clearJwtRequestState();
         $pending = $this->withToken($managerToken)

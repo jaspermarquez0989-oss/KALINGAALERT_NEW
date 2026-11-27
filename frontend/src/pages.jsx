@@ -419,7 +419,7 @@ export function DashboardPage({ user }) {
                 {data.areas.length || isResident
                     ? <MapView areas={mapAreas.filter((area) => area.is_active)} incidents={isResident ? data.incidents : undefined} />
                     : <EmptyState title="No active mapped areas" />}
-                {isResident && <p className="muted">This map shows active public risk areas and verified past fire incidents in your barangay. Past incident pins are historical records, not current emergency alerts. Your exact home location stays private.</p>}
+                {isResident && <p className="muted">This map shows active public risk areas and verified past fire incidents across Bongabong. Past incident pins are historical records, not current emergency alerts. Your exact home location stays private.</p>}
                 {isResident && data.areas.length === 0 && <Notice tone="info">No active risk areas are currently mapped.</Notice>}
             </Panel>
             <p className="disclaimer"><strong>Safety notice</strong> Historical fire records are not live incident reports or fire predictions. KalingaAlert does not dispatch rescue. Follow official warnings and local emergency instructions.</p>
