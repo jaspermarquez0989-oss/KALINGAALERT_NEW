@@ -3,6 +3,8 @@
 use App\Http\Controllers\AlertController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\ProfileController;
+use App\Http\Controllers\FireIncidentController;
+use App\Http\Controllers\FireRiskPredictionController;
 use App\Http\Controllers\HazardSourceController;
 use App\Http\Controllers\RiskAreaController;
 use App\Http\Controllers\StaffController;
@@ -51,6 +53,24 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
 
         Route::middleware('role:system_admin,mdrrmo,bfp_officer')->group(function (): void {
             Route::post('/hazard-sources', [HazardSourceController::class, 'store'])->name('hazard-sources.store');
+        });
+
+        Route::middleware('role:system_admin,mdrrmo,bfp_officer')->prefix('/fire-incidents')->name('fire-incidents.')->group(function (): void {
+            Route::get('/', [FireIncidentController::class, 'index'])->name('index');
+            Route::post('/', [FireIncidentController::class, 'store'])->name('store');
+            Route::get('/training-data', [FireIncidentController::class, 'trainingData'])->name('training-data');
+            Route::patch('/{fireIncident}/review', [FireIncidentController::class, 'review'])
+                ->middleware('role:bfp_officer')
+                ->name('review');
+        });
+
+        Route::middleware('role:system_admin,mdrrmo,bfp_officer')->prefix('/fire-risk')->name('fire-risk.')->group(function (): void {
+            Route::get('/model-info', [FireRiskPredictionController::class, 'info'])
+                ->middleware('throttle:30,1')
+                ->name('model-info');
+            Route::post('/predict', [FireRiskPredictionController::class, 'predict'])
+                ->middleware('throttle:10,1')
+                ->name('predict');
         });
 
         Route::middleware('role:system_admin,mdrrmo,bfp_officer,alert_operator')->group(function (): void {

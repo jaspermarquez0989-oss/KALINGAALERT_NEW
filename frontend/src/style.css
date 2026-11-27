@@ -130,6 +130,15 @@ p { line-height: 1.65; }
 .status-published, .status-active, .status-verified { border-color: #d2e8d8; background: #edf8ef; color: #2e7143; }
 .status-draft, .status-pending, .status-approved { border-color: #d8e5e9; background: #f0f7f8; color: #356574; }
 .status-expired, .status-cancelled, .status-rejected, .status-inactive { border-color: #eed8d5; background: #fbf1f0; color: #9a5147; }
+.fire-incident-form-panel { max-width: 1120px; }
+.fire-risk-form-panel { max-width: 1120px; }
+.fire-risk-result { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 30px; margin-bottom: 16px; }
+.fire-risk-result > div { display: grid; gap: 5px; }
+.fire-risk-result strong { color: var(--green); font-size: 24px; }
+.fire-risk-result p { margin: 0; color: var(--muted); font-size: 13px; }
+.fire-incident-list-controls { display: flex; max-width: 280px; align-items: flex-end; gap: 14px; margin-bottom: 16px; }
+.fire-incident-list-controls .field { width: 100%; }
+.button-danger-text { color: var(--red); }
 
 .table-scroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; text-align: left; }

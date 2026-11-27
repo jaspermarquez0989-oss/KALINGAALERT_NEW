@@ -665,6 +665,109 @@ class ApiV1Test extends TestCase
         ]);
     }
 
+    public function test_fire_incident_records_require_independent_bfp_review_and_only_verified_cases_export(): void
+    {
+        $submitter = $this->makeUser(UserRole::BfpOfficer->value);
+        $reviewer = $this->makeUser(UserRole::BfpOfficer->value);
+        $manager = $this->makeUser(UserRole::MdrrmoPersonnel->value);
+        $resident = $this->makeUser(UserRole::CommunityResident->value);
+        $submitterToken = $this->tokenFor($submitter);
+        $this->clearJwtRequestState();
+        $reviewerToken = $this->tokenFor($reviewer);
+        $this->clearJwtRequestState();
+        $managerToken = $this->tokenFor($manager);
+        $this->clearJwtRequestState();
+        $residentToken = $this->tokenFor($resident);
+        $this->clearJwtRequestState();
+
+        $incidentData = [
+            'occurred_at' => now()->subDays(30)->toIso8601String(),
+            'barangay' => 'Poblacion',
+            'sitio' => 'Purok 1',
+            'incident_type' => 'structure',
+            'cause' => 'electrical',
+            'latitude' => 12.73,
+            'longitude' => 121.36,
+            'injuries' => 1,
+            'fatalities' => 0,
+            'property_damage_estimate' => 1200.50,
+            'source_reference' => 'BFP-2025-001',
+            'details' => 'Historical incident recorded from the official BFP report.',
+        ];
+
+        $created = $this->withToken($submitterToken)
+            ->postJson('/api/v1/fire-incidents', $incidentData)
+            ->assertCreated()
+            ->assertJsonPath('data.verification_status', 'pending');
+        $incidentId = $created->json('data.id');
+
+        $this->withToken($submitterToken)
+            ->patchJson("/api/v1/fire-incidents/{$incidentId}/review", ['decision' => 'verified'])
+            ->assertForbidden();
+
+        $this->clearJwtRequestState();
+        $this->withToken($managerToken)
+            ->patchJson("/api/v1/fire-incidents/{$incidentId}/review", ['decision' => 'verified'])
+            ->assertForbidden();
+
+        $this->clearJwtRequestState();
+        $this->withToken($reviewerToken)
+            ->patchJson("/api/v1/fire-incidents/{$incidentId}/review", ['decision' => 'verified'])
+            ->assertOk()
+            ->assertJsonPath('data.verification_status', 'verified')
+            ->assertJsonPath('data.reviewer.id', $reviewer->id);
+
+        $this->clearJwtRequestState();
+        $pending = $this->withToken($managerToken)
+            ->postJson('/api/v1/fire-incidents', [
+                ...$incidentData,
+                'source_reference' => 'BFP-2025-002',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.verification_status', 'pending');
+        $pendingId = $pending->json('data.id');
+
+        $this->clearJwtRequestState();
+        $this->withToken($reviewerToken)
+            ->patchJson("/api/v1/fire-incidents/{$pendingId}/review", ['decision' => 'rejected'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('review_notes');
+
+        $this->clearJwtRequestState();
+        $this->withToken($reviewerToken)
+            ->patchJson("/api/v1/fire-incidents/{$pendingId}/review", [
+                'decision' => 'rejected',
+                'review_notes' => 'The supplied source record could not be verified.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.verification_status', 'rejected');
+
+        $this->clearJwtRequestState();
+        $this->withToken($managerToken)
+            ->getJson('/api/v1/fire-incidents/training-data')
+            ->assertOk()
+            ->assertJsonPath('meta.verified_records', 1)
+            ->assertJsonPath('data.0.fire_occurred', 1)
+            ->assertJsonPath('data.0.source_reference', 'BFP-2025-001')
+            ->assertJsonMissing(['source_reference' => 'BFP-2025-002']);
+
+        $this->clearJwtRequestState();
+        $this->withToken($residentToken)
+            ->getJson('/api/v1/fire-incidents')
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $submitter->id,
+            'action' => 'fire_incident.submitted',
+            'subject_id' => $incidentId,
+        ]);
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $reviewer->id,
+            'action' => 'fire_incident.verified',
+            'subject_id' => $incidentId,
+        ]);
+    }
+
     public function test_staff_api_restricts_management_and_records_staff_changes(): void
     {
         $administrator = $this->makeUser(UserRole::SystemAdministrator->value, [
@@ -719,6 +822,79 @@ class ApiV1Test extends TestCase
         ]);
     }
 
+    public function test_authorized_staff_can_request_a_fire_occurrence_decision_support_estimate(): void
+    {
+        $manager = $this->makeUser(UserRole::MdrrmoPersonnel->value);
+        $resident = $this->makeUser(UserRole::CommunityResident->value);
+        $managerToken = $this->tokenFor($manager);
+        $this->clearJwtRequestState();
+        $residentToken = $this->tokenFor($resident);
+        $this->clearJwtRequestState();
+
+        $this->withToken($managerToken)
+            ->getJson('/api/v1/fire-risk/model-info')
+            ->assertOk()
+            ->assertJsonPath('data.model_version', 'mdrrmo-bongabong-500m-24h-v3')
+            ->assertJsonPath('data.model_status', 'staff_decision_support')
+            ->assertJsonPath('data.forecast_horizon', 'next_24_hours')
+            ->assertJsonPath('data.prediction_radius_meters', 500)
+            ->assertJsonPath('data.outcome_scope', 'verified fire occurrence within 500 meters of the input coordinates during the next 24 hours')
+            ->assertJsonPath('data.training_rows', 1200)
+            ->assertJsonPath('data.validation.strategy', 'walk_forward_calendar_years')
+            ->assertJsonCount(3, 'data.validation.folds')
+            ->assertJsonPath('data.tuning.selected_l2_strength', 0.01);
+
+        $input = [
+            'month' => 1,
+            'latitude' => 12.74207,
+            'longitude' => 121.45518,
+            'elevation_m' => 48,
+            'temperature_c' => 25,
+            'relative_humidity_pct' => 70.5,
+            'wind_speed_kmh' => 25.1,
+            'rainfall_mm' => 0,
+            'days_since_last_rain' => 5,
+            'soil_moisture_pct' => 64.9,
+            'fuel_dryness_index' => 36.7,
+            'dist_to_fire_station_km' => 4.61,
+            'distance_to_water_km' => 3.5,
+            'barangay' => 'Polusahi',
+            'land_use_zone' => 'Grassland_Agroforestry',
+            'season' => 'Cool_Amihan_Transition',
+        ];
+
+        $this->withToken($managerToken)
+            ->postJson('/api/v1/fire-risk/predict', [
+                ...$input,
+                'temperature_c' => 1000,
+                'barangay' => 'Unknown',
+                'latitude' => 90,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['temperature_c', 'barangay', 'latitude']);
+
+        $prediction = $this->withToken($managerToken)
+            ->postJson('/api/v1/fire-risk/predict', $input)
+            ->assertOk()
+            ->assertJsonPath('data.model_version', 'mdrrmo-bongabong-500m-24h-v3')
+            ->assertJsonPath('data.threshold', 0.5)
+            ->assertJsonStructure([
+                'data' => ['prediction', 'threshold_met', 'score_percent', 'disclaimer'],
+            ]);
+
+        $this->assertGreaterThanOrEqual(0, $prediction->json('data.score_percent'));
+        $this->assertLessThanOrEqual(100, $prediction->json('data.score_percent'));
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $manager->id,
+            'action' => 'fire_risk.predicted',
+        ]);
+
+        $this->clearJwtRequestState();
+        $this->withToken($residentToken)
+            ->getJson('/api/v1/fire-risk/model-info')
+            ->assertForbidden();
+    }
+
     public function test_web_page_paths_redirect_to_the_separate_frontend_and_preserve_role_access(): void
     {
         config(['services.frontend.url' => 'http://localhost:5173']);
@@ -745,6 +921,8 @@ class ApiV1Test extends TestCase
             '/staff',
             '/staff/create',
             '/staff/audit',
+            '/fire-incidents',
+            '/fire-risk',
         ] as $path) {
             $this->actingAs($administrator)
                 ->get($path)
@@ -760,6 +938,12 @@ class ApiV1Test extends TestCase
 
         $this->actingAs($resident)
             ->get('/alerts/create')
+            ->assertForbidden();
+        $this->actingAs($resident)
+            ->get('/fire-incidents')
+            ->assertForbidden();
+        $this->actingAs($resident)
+            ->get('/fire-risk')
             ->assertForbidden();
 
         $this->get('/not-a-page')->assertNotFound();

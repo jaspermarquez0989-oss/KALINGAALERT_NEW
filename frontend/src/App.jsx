@@ -21,10 +21,13 @@ import {
     StaffFormPage,
     StaffPage,
 } from './pages.jsx';
+import FireIncidentsPage from './FireIncidentsPage.jsx';
+import FireRiskPredictionPage from './FireRiskPredictionPage.jsx';
 import { LoadingState, Notice, roleLabel } from './ui.jsx';
 
 const staffRoles = ['system_admin', 'mdrrmo', 'bfp_officer', 'alert_operator'];
 const alertRoles = ['system_admin', 'mdrrmo', 'alert_operator'];
+const incidentRoles = ['system_admin', 'mdrrmo', 'bfp_officer'];
 
 function unreadAlertContent(alerts) {
     const content = document.createElement('div');
@@ -77,6 +80,8 @@ function Navigation({ user, onLogout }) {
                         {alertRoles.includes(user.role) && <a className={isActive('/alerts') ? 'active' : ''} aria-current={isActive('/alerts') ? 'page' : undefined} href="/alerts">Advisories</a>}
                         {staffRoles.includes(user.role) && <a className={isActive('/hazard-sources') ? 'active' : ''} aria-current={isActive('/hazard-sources') ? 'page' : undefined} href="/hazard-sources">Official sources</a>}
                         {staffRoles.includes(user.role) && <a className={isActive('/risk-areas') ? 'active' : ''} aria-current={isActive('/risk-areas') ? 'page' : undefined} href="/risk-areas">Risk areas</a>}
+                        {incidentRoles.includes(user.role) && <a className={isActive('/fire-incidents') ? 'active' : ''} aria-current={isActive('/fire-incidents') ? 'page' : undefined} href="/fire-incidents">Fire incidents</a>}
+                        {incidentRoles.includes(user.role) && <a className={isActive('/fire-risk') ? 'active' : ''} aria-current={isActive('/fire-risk') ? 'page' : undefined} href="/fire-risk">Fire-risk estimate</a>}
                         {isAdmin && <a className={isActive('/staff') ? 'active' : ''} aria-current={isActive('/staff') ? 'page' : undefined} href="/staff">Staff accounts</a>}
                         {isAdmin && <a className={isActive('/staff/audit') ? 'active' : ''} aria-current={isActive('/staff/audit') ? 'page' : undefined} href="/staff/audit">Audit history</a>}
                     </>
@@ -128,6 +133,8 @@ function GuestFrame({ children }) {
 
 function routeFor(path) {
     if (path === '/dashboard') return { component: DashboardPage, roles: [...staffRoles, 'resident'] };
+    if (path === '/fire-incidents') return { component: FireIncidentsPage, roles: incidentRoles };
+    if (path === '/fire-risk') return { component: FireRiskPredictionPage, roles: incidentRoles };
     if (path === '/alerts') return { component: AlertsPage, roles: alertRoles };
     if (path === '/alerts/create') return { component: AlertFormPage, roles: alertRoles };
     if (/^\/alerts\/\d+\/edit$/.test(path)) {

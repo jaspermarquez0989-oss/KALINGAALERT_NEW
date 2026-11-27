@@ -444,7 +444,7 @@ export function DashboardPage({ user }) {
                 {isResident && <p className="muted">This map shows all active public risk areas and current advisory level. Your exact home location stays private.</p>}
                 {isResident && data.areas.length === 0 && <Notice tone="info">No active risk areas are currently mapped.</Notice>}
             </Panel>
-            <p className="disclaimer"><strong>Safety notice</strong> KalingaAlert does not predict hazards, accept incident reports, or dispatch rescue. Follow official warnings and local emergency instructions.</p>
+            <p className="disclaimer"><strong>Safety notice</strong> Historical fire records are not live incident reports or fire predictions. KalingaAlert does not dispatch rescue. Follow official warnings and local emergency instructions.</p>
         </>
     );
 }

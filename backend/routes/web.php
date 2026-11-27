@@ -50,6 +50,8 @@ Route::middleware('auth')->group(function () use ($frontendPage): void {
     Route::middleware('role:system_admin,mdrrmo,bfp_officer')->group(function () use ($frontendPage): void {
         Route::get('/hazard-sources/create', $frontendPage)->name('hazard-sources.create');
         Route::post('/hazard-sources', [HazardSourceController::class, 'store'])->name('hazard-sources.store');
+        Route::get('/fire-incidents', $frontendPage)->name('fire-incidents.index');
+        Route::get('/fire-risk', $frontendPage)->name('fire-risk.index');
     });
 
     Route::middleware('role:system_admin,mdrrmo,alert_operator')->group(function () use ($frontendPage): void {

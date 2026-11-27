@@ -1,0 +1,624 @@
+{
+  "model_type": "standardized_logistic_regression",
+  "model_version": "mdrrmo-bongabong-500m-24h-v3",
+  "model_status": "staff_decision_support",
+  "target": "fire_occurred",
+  "forecast_horizon": "next_24_hours",
+  "prediction_radius_meters": 500,
+  "outcome_scope": "verified fire occurrence within 500 meters of the input coordinates during the next 24 hours",
+  "measurement_timing": "features are recorded before the forecast period, as confirmed by MDRRMO staff per user report",
+  "source_filename": "bongabong_oriental_mindoro_fire_dataset-v2.csv",
+  "source_origin": "MDRRMO staff verified dataset labels, pre-forecast measurement timing, and the 500-meter point-level scope, as confirmed by the user.",
+  "training_rows": 1200,
+  "source_rows": 1200,
+  "source_positive_rows": 381,
+  "training_date_range": [
+    "2021-01-01",
+    "2026-11-27"
+  ],
+  "tuning": {
+    "years": [
+      2022,
+      2023
+    ],
+    "selection_metric": "mean_yearly_f1",
+    "selected_l2_strength": 0.01,
+    "candidates": [
+      {
+        "l2_strength": 0.001,
+        "mean_yearly_f1": 0.820376522702104,
+        "mean_yearly_roc_auc": 0.939247924586741,
+        "folds": [
+          {
+            "year": 2022,
+            "test_rows": 160,
+            "f1": 0.819047619047619,
+            "roc_auc": 0.9464975179260894
+          },
+          {
+            "year": 2023,
+            "test_rows": 209,
+            "f1": 0.8217054263565892,
+            "roc_auc": 0.9319983312473926
+          }
+        ]
+      },
+      {
+        "l2_strength": 0.01,
+        "mean_yearly_f1": 0.8461174242424243,
+        "mean_yearly_roc_auc": 0.9460867440708314,
+        "folds": [
+          {
+            "year": 2022,
+            "test_rows": 160,
+            "f1": 0.8484848484848485,
+            "roc_auc": 0.9556903842618129
+          },
+          {
+            "year": 2023,
+            "test_rows": 209,
+            "f1": 0.84375,
+            "roc_auc": 0.9364831038798498
+          }
+        ]
+      },
+      {
+        "l2_strength": 0.1,
+        "mean_yearly_f1": 0.8236350574712644,
+        "mean_yearly_roc_auc": 0.9495349030929221,
+        "folds": [
+          {
+            "year": 2022,
+            "test_rows": 160,
+            "f1": 0.8541666666666667,
+            "roc_auc": 0.9610222467365325
+          },
+          {
+            "year": 2023,
+            "test_rows": 209,
+            "f1": 0.7931034482758621,
+            "roc_auc": 0.9380475594493116
+          }
+        ]
+      },
+      {
+        "l2_strength": 1.0,
+        "mean_yearly_f1": 0.717590361445783,
+        "mean_yearly_roc_auc": 0.9421304749616926,
+        "folds": [
+          {
+            "year": 2022,
+            "test_rows": 160,
+            "f1": 0.7951807228915663,
+            "roc_auc": 0.9540356683213826
+          },
+          {
+            "year": 2023,
+            "test_rows": 209,
+            "f1": 0.6399999999999999,
+            "roc_auc": 0.9302252816020025
+          }
+        ]
+      }
+    ]
+  },
+  "training_config": {
+    "learning_rate": 0.15,
+    "iterations": 2400,
+    "l2_strength": 0.01,
+    "selection_metric": "mean_yearly_f1",
+    "optimization": {
+      "objective": 0.2662337972461268,
+      "max_absolute_gradient": 0.00039609374535452433,
+      "gradient_tolerance": 0.001,
+      "converged": true
+    }
+  },
+  "validation": {
+    "strategy": "walk_forward_calendar_years",
+    "folds": [
+      {
+        "year": 2024,
+        "training_rows": 509,
+        "test_rows": 262,
+        "test_date_range": [
+          "2024-01-05",
+          "2024-12-29"
+        ],
+        "metrics": {
+          "test_rows": 262,
+          "positive_test_rows": 88,
+          "threshold": 0.5,
+          "accuracy": 0.8740458015267175,
+          "majority_class_baseline_accuracy": 0.6641221374045801,
+          "precision": 0.8235294117647058,
+          "recall": 0.7954545454545454,
+          "specificity": 0.9137931034482759,
+          "f1": 0.8092485549132947,
+          "roc_auc": 0.9509535005224661,
+          "brier_score": 0.08621869349185284,
+          "log_loss": 0.2784163438861507,
+          "confusion_matrix": {
+            "true_negative": 159,
+            "false_positive": 15,
+            "false_negative": 18,
+            "true_positive": 70
+          }
+        },
+        "threshold_sweep": [
+          {
+            "threshold": 0.25,
+            "precision": 0.7345132743362832,
+            "recall": 0.9431818181818182,
+            "false_positives": 30,
+            "false_negatives": 5
+          },
+          {
+            "threshold": 0.35,
+            "precision": 0.78,
+            "recall": 0.8863636363636364,
+            "false_positives": 22,
+            "false_negatives": 10
+          },
+          {
+            "threshold": 0.5,
+            "precision": 0.8235294117647058,
+            "recall": 0.7954545454545454,
+            "false_positives": 15,
+            "false_negatives": 18
+          },
+          {
+            "threshold": 0.65,
+            "precision": 0.8732394366197183,
+            "recall": 0.7045454545454546,
+            "false_positives": 9,
+            "false_negatives": 26
+          }
+        ]
+      },
+      {
+        "year": 2025,
+        "training_rows": 771,
+        "test_rows": 252,
+        "test_date_range": [
+          "2025-01-02",
+          "2025-12-31"
+        ],
+        "metrics": {
+          "test_rows": 252,
+          "positive_test_rows": 73,
+          "threshold": 0.5,
+          "accuracy": 0.8809523809523809,
+          "majority_class_baseline_accuracy": 0.7103174603174603,
+          "precision": 0.8524590163934426,
+          "recall": 0.7123287671232876,
+          "specificity": 0.9497206703910615,
+          "f1": 0.7761194029850746,
+          "roc_auc": 0.9421443330527283,
+          "brier_score": 0.08173346106643062,
+          "log_loss": 0.2671518388040608,
+          "confusion_matrix": {
+            "true_negative": 170,
+            "false_positive": 9,
+            "false_negative": 21,
+            "true_positive": 52
+          }
+        },
+        "threshold_sweep": [
+          {
+            "threshold": 0.25,
+            "precision": 0.6966292134831461,
+            "recall": 0.8493150684931506,
+            "false_positives": 27,
+            "false_negatives": 11
+          },
+          {
+            "threshold": 0.35,
+            "precision": 0.75,
+            "recall": 0.821917808219178,
+            "false_positives": 20,
+            "false_negatives": 13
+          },
+          {
+            "threshold": 0.5,
+            "precision": 0.8524590163934426,
+            "recall": 0.7123287671232876,
+            "false_positives": 9,
+            "false_negatives": 21
+          },
+          {
+            "threshold": 0.65,
+            "precision": 0.9574468085106383,
+            "recall": 0.6164383561643836,
+            "false_positives": 2,
+            "false_negatives": 28
+          }
+        ]
+      },
+      {
+        "year": 2026,
+        "training_rows": 1023,
+        "test_rows": 177,
+        "test_date_range": [
+          "2026-01-02",
+          "2026-11-27"
+        ],
+        "metrics": {
+          "test_rows": 177,
+          "positive_test_rows": 57,
+          "threshold": 0.5,
+          "accuracy": 0.8926553672316384,
+          "majority_class_baseline_accuracy": 0.6779661016949152,
+          "precision": 0.8518518518518519,
+          "recall": 0.8070175438596491,
+          "specificity": 0.9333333333333333,
+          "f1": 0.8288288288288288,
+          "roc_auc": 0.9597953216374269,
+          "brier_score": 0.0736238286057056,
+          "log_loss": 0.2368104845819764,
+          "confusion_matrix": {
+            "true_negative": 112,
+            "false_positive": 8,
+            "false_negative": 11,
+            "true_positive": 46
+          }
+        },
+        "threshold_sweep": [
+          {
+            "threshold": 0.25,
+            "precision": 0.726027397260274,
+            "recall": 0.9298245614035088,
+            "false_positives": 20,
+            "false_negatives": 4
+          },
+          {
+            "threshold": 0.35,
+            "precision": 0.8125,
+            "recall": 0.9122807017543859,
+            "false_positives": 12,
+            "false_negatives": 5
+          },
+          {
+            "threshold": 0.5,
+            "precision": 0.8518518518518519,
+            "recall": 0.8070175438596491,
+            "false_positives": 8,
+            "false_negatives": 11
+          },
+          {
+            "threshold": 0.65,
+            "precision": 0.9090909090909091,
+            "recall": 0.7017543859649122,
+            "false_positives": 4,
+            "false_negatives": 17
+          }
+        ]
+      }
+    ],
+    "summary": {
+      "years": [
+        2024,
+        2025,
+        2026
+      ],
+      "test_rows": 691,
+      "threshold": 0.5,
+      "accuracy": 0.8813314037626628,
+      "majority_class_baseline_accuracy": 0.6845151953690304,
+      "precision": 0.84,
+      "recall": 0.7706422018348624,
+      "specificity": 0.9323467230443975,
+      "f1": 0.8038277511961722,
+      "mean_yearly_roc_auc": 0.9509643850708738,
+      "mean_yearly_brier_score": 0.08052532772132968,
+      "mean_yearly_log_loss": 0.26079288909072934,
+      "confusion_matrix": {
+        "true_negative": 441,
+        "false_positive": 32,
+        "false_negative": 50,
+        "true_positive": 168
+      },
+      "threshold_sweep": [
+        {
+          "threshold": 0.25,
+          "precision": 0.72,
+          "recall": 0.908256880733945,
+          "false_positives": 77,
+          "false_negatives": 20
+        },
+        {
+          "threshold": 0.35,
+          "precision": 0.7786885245901639,
+          "recall": 0.8715596330275229,
+          "false_positives": 54,
+          "false_negatives": 28
+        },
+        {
+          "threshold": 0.5,
+          "precision": 0.84,
+          "recall": 0.7706422018348624,
+          "false_positives": 32,
+          "false_negatives": 50
+        },
+        {
+          "threshold": 0.65,
+          "precision": 0.9074074074074074,
+          "recall": 0.6743119266055045,
+          "false_positives": 15,
+          "false_negatives": 71
+        }
+      ]
+    }
+  },
+  "baseline_comparison": {
+    "majority_class_accuracy": 0.6845151953690304,
+    "model_accuracy": 0.8813314037626628,
+    "accuracy_lift": 0.19681620839363245
+  },
+  "threshold": 0.5,
+  "intercept": -1.297308602750529,
+  "features": [
+    "month",
+    "latitude",
+    "longitude",
+    "elevation_m",
+    "temperature_c",
+    "relative_humidity_pct",
+    "wind_speed_kmh",
+    "rainfall_mm",
+    "days_since_last_rain",
+    "soil_moisture_pct",
+    "fuel_dryness_index",
+    "dist_to_fire_station_km",
+    "distance_to_water_km",
+    "barangay=Anilao",
+    "barangay=Aplaya",
+    "barangay=Bagumbayan I",
+    "barangay=Bagumbayan II",
+    "barangay=Batangan",
+    "barangay=Bukal",
+    "barangay=Camantigue",
+    "barangay=Carmundo",
+    "barangay=Cawayan",
+    "barangay=Dayhagan",
+    "barangay=Formon",
+    "barangay=Hagan",
+    "barangay=Hagupit",
+    "barangay=Ipil",
+    "barangay=Kaligtasan",
+    "barangay=Labasan",
+    "barangay=Labonan",
+    "barangay=Libertad",
+    "barangay=Lisap",
+    "barangay=Luna",
+    "barangay=Malitbog",
+    "barangay=Mapang",
+    "barangay=Masaguisi",
+    "barangay=Mina de Oro",
+    "barangay=Morente",
+    "barangay=Ogbot",
+    "barangay=Orconuma",
+    "barangay=Poblacion",
+    "barangay=Polusahi",
+    "barangay=Sagana",
+    "barangay=San Isidro",
+    "barangay=San Jose",
+    "barangay=San Juan",
+    "barangay=Santa Cruz",
+    "barangay=Sigange",
+    "barangay=Tawas",
+    "land_use_zone=Agricultural_Coconut_Rice",
+    "land_use_zone=Coastal_Agricultural",
+    "land_use_zone=Coastal_Residential",
+    "land_use_zone=Forest_Upland",
+    "land_use_zone=Grassland_Agroforestry",
+    "land_use_zone=Urban_Residential",
+    "season=Cool_Amihan_Transition",
+    "season=Dry_Hot_Season",
+    "season=Wet_Habagat_Season"
+  ],
+  "weights": [
+    0.0549472613314003,
+    -0.010108479297041137,
+    -0.19835503778557592,
+    -0.09492954055439842,
+    0.3299901805531858,
+    -1.013431245428252,
+    0.7582540381794273,
+    -0.8465501151203325,
+    1.0101165636530147,
+    -0.29390796967233596,
+    0.4179064161473336,
+    -0.16293179331646365,
+    -0.02454878029190582,
+    -0.15402777560731487,
+    0.13802821652657957,
+    0.07556635573295162,
+    -0.06804314949061888,
+    -0.05177901731127637,
+    0.0834357809845098,
+    0.054115153556143686,
+    -0.09757058409507259,
+    0.09384637775854392,
+    0.13968455041215788,
+    0.1664245110974387,
+    0.05506746384390499,
+    0.12837028937447492,
+    0.16149436510803244,
+    -0.13632377348758434,
+    -0.20914403260299996,
+    0.038329181224720496,
+    0.1394518895266872,
+    -0.1899342970048514,
+    0.09991063591718796,
+    -0.12579940005447354,
+    -0.001833556662270649,
+    -0.23825331688558096,
+    -0.12862679289343598,
+    0.0291264032411919,
+    0.02166627137230755,
+    0.11108053904449162,
+    0.012773301767498552,
+    -0.014517967324048793,
+    -0.037579820195020285,
+    -0.029501974036573776,
+    0.05131147149188205,
+    -0.02931736250425838,
+    -0.1730562358566527,
+    -0.06499771149581281,
+    0.048888193615217145,
+    -0.02234646037048658,
+    -0.20436165623936275,
+    -0.07111581607642048,
+    -0.00833010044874204,
+    0.18412170921325713,
+    0.02029650800983112,
+    0.06653236268694909,
+    -0.09562278698222706,
+    -0.07264539161664531
+  ],
+  "numeric_means": {
+    "month": 6.6725,
+    "latitude": 12.733486916666667,
+    "longitude": 121.46201018333333,
+    "elevation_m": 50.4775,
+    "temperature_c": 29.634500000000003,
+    "relative_humidity_pct": 79.94616666666666,
+    "wind_speed_kmh": 15.037916666666666,
+    "rainfall_mm": 5.7404166666666665,
+    "days_since_last_rain": 4.575833333333334,
+    "soil_moisture_pct": 60.75691666666667,
+    "fuel_dryness_index": 47.540083333333335,
+    "dist_to_fire_station_km": 6.669458333333334,
+    "distance_to_water_km": 1.3131833333333334
+  },
+  "numeric_scales": {
+    "month": 3.4629337875083124,
+    "latitude": 0.03752496715068147,
+    "longitude": 0.029252466764355726,
+    "elevation_m": 58.38488240760617,
+    "temperature_c": 2.2972178281564855,
+    "relative_humidity_pct": 13.334116717611591,
+    "wind_speed_kmh": 8.01341192375147,
+    "rainfall_mm": 9.49630672909503,
+    "days_since_last_rain": 6.959711390488034,
+    "soil_moisture_pct": 10.352100535304686,
+    "fuel_dryness_index": 11.64849353606389,
+    "dist_to_fire_station_km": 4.008312835836365,
+    "distance_to_water_km": 1.4253002138925757
+  },
+  "numeric_ranges": {
+    "month": {
+      "minimum": 1.0,
+      "maximum": 12.0
+    },
+    "latitude": {
+      "minimum": 12.64843,
+      "maximum": 12.81438
+    },
+    "longitude": {
+      "minimum": 121.37311,
+      "maximum": 121.50214
+    },
+    "elevation_m": {
+      "minimum": 1.0,
+      "maximum": 253.0
+    },
+    "temperature_c": {
+      "minimum": 20.7,
+      "maximum": 37.0
+    },
+    "relative_humidity_pct": {
+      "minimum": 35.0,
+      "maximum": 98.0
+    },
+    "wind_speed_kmh": {
+      "minimum": 2.0,
+      "maximum": 47.0
+    },
+    "rainfall_mm": {
+      "minimum": 0.0,
+      "maximum": 76.4
+    },
+    "days_since_last_rain": {
+      "minimum": 0.0,
+      "maximum": 27.0
+    },
+    "soil_moisture_pct": {
+      "minimum": 22.6,
+      "maximum": 80.3
+    },
+    "fuel_dryness_index": {
+      "minimum": 24.0,
+      "maximum": 94.0
+    },
+    "dist_to_fire_station_km": {
+      "minimum": 0.37,
+      "maximum": 18.3
+    },
+    "distance_to_water_km": {
+      "minimum": 0.0,
+      "maximum": 14.97
+    }
+  },
+  "categories": {
+    "barangay": [
+      "Anilao",
+      "Aplaya",
+      "Bagumbayan I",
+      "Bagumbayan II",
+      "Batangan",
+      "Bukal",
+      "Camantigue",
+      "Carmundo",
+      "Cawayan",
+      "Dayhagan",
+      "Formon",
+      "Hagan",
+      "Hagupit",
+      "Ipil",
+      "Kaligtasan",
+      "Labasan",
+      "Labonan",
+      "Libertad",
+      "Lisap",
+      "Luna",
+      "Malitbog",
+      "Mapang",
+      "Masaguisi",
+      "Mina de Oro",
+      "Morente",
+      "Ogbot",
+      "Orconuma",
+      "Poblacion",
+      "Polusahi",
+      "Sagana",
+      "San Isidro",
+      "San Jose",
+      "San Juan",
+      "Santa Cruz",
+      "Sigange",
+      "Tawas"
+    ],
+    "land_use_zone": [
+      "Agricultural_Coconut_Rice",
+      "Coastal_Agricultural",
+      "Coastal_Residential",
+      "Forest_Upland",
+      "Grassland_Agroforestry",
+      "Urban_Residential"
+    ],
+    "season": [
+      "Cool_Amihan_Transition",
+      "Dry_Hot_Season",
+      "Wet_Habagat_Season"
+    ]
+  },
+  "limitations": [
+    "Validation reflects historical holdouts from Bongabong and does not establish accuracy outside the municipality or in changed conditions.",
+    "Some verified fires were missed at the reference threshold; a score below threshold is not an all-clear.",
+    "Model scores have not been independently calibrated.",
+    "Smoke, CO, incident type, risk score, and risk level were excluded to reduce post-event and target leakage.",
+    "Use as staff decision support only. Do not automatically create, publish, or suppress public alerts from this model."
+  ]
+}
