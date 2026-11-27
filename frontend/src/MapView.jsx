@@ -3,6 +3,7 @@ import { formatCoordinatePair } from './coordinates.js';
 import { heatPaletteForScore } from './intensity.js';
 
 const emptyAreas = [];
+const emptyIncidents = [];
 
 function popupContent(area) {
     const root = document.createElement('div');
@@ -71,6 +72,28 @@ function popupContent(area) {
     return root;
 }
 
+function incidentPopupContent(incident) {
+    const root = document.createElement('div');
+    const title = document.createElement('strong');
+    const location = document.createElement('div');
+    const type = document.createElement('div');
+    const occurred = document.createElement('div');
+    const notice = document.createElement('p');
+    const occurredAt = incident.occurred_at
+        ? new Date(incident.occurred_at).toLocaleString()
+        : 'Date not recorded';
+
+    title.textContent = 'Verified past fire incident';
+    location.textContent = [incident.sitio, incident.barangay].filter(Boolean).join(', ');
+    type.textContent = `Type: ${incident.incident_type.replaceAll('_', ' ')}`;
+    occurred.textContent = `Occurred: ${occurredAt}`;
+    notice.className = 'map-incident-notice';
+    notice.textContent = 'Historical record, not a live emergency alert.';
+    root.append(title, location, type, occurred, notice);
+
+    return root;
+}
+
 const severityScores = { advisory: 0.3, watch: 0.55, warning: 0.78, emergency: 1 };
 
 function heatForArea(area) {
@@ -106,6 +129,7 @@ function areaCenter(area, ring) {
 
 export default function MapView({
     areas = emptyAreas,
+    incidents = emptyIncidents,
     boundary,
     editable = false,
     focusLocation,
@@ -302,6 +326,7 @@ export default function MapView({
             };
         } else {
             const polygons = [];
+            const incidentMarkers = [];
 
             for (const area of areas) {
                 const ring = area.boundary?.coordinates?.[0] ?? [];
@@ -336,8 +361,31 @@ export default function MapView({
                 }
             }
 
-            if (polygons.length) {
-                map.fitBounds(L.featureGroup(polygons).getBounds().pad(0.2), { padding: [25, 25], maxZoom: 14 });
+            for (const incident of incidents) {
+                const latitude = Number(incident.latitude);
+                const longitude = Number(incident.longitude);
+                if (!Number.isFinite(latitude) || !Number.isFinite(longitude)
+                    || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+                    continue;
+                }
+
+                const icon = L.divIcon({
+                    className: 'fire-incident-marker',
+                    html: '<span aria-hidden="true"></span>',
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12],
+                });
+                const marker = L.marker([latitude, longitude], {
+                    icon,
+                    title: `Verified past fire incident in ${incident.barangay}`,
+                }).addTo(map);
+                marker.bindPopup(incidentPopupContent(incident));
+                incidentMarkers.push(marker);
+            }
+
+            const visibleLayers = [...polygons, ...incidentMarkers];
+            if (visibleLayers.length) {
+                map.fitBounds(L.featureGroup(visibleLayers).getBounds().pad(0.2), { padding: [25, 25], maxZoom: 14 });
             }
         }
 
@@ -352,7 +400,7 @@ export default function MapView({
             delete element.__focusLocation;
             delete element.__clearFocusLocation;
         };
-    }, [areas, editable]);
+    }, [areas, editable, incidents]);
 
     useEffect(() => {
         if (focusLocation) {
@@ -388,7 +436,7 @@ export default function MapView({
                 </div>
             )}
             {!editable && (
-                <div className="heatmap-legend" aria-label="Advisory level scale from 1 to 5">
+                <div className="heatmap-legend" aria-label="Map legend">
                     <span>Advisory level</span>
                     {[1, 2, 3, 4, 5].map((level) => (
                         <span className="heatmap-legend-step" key={level}>
@@ -396,6 +444,7 @@ export default function MapView({
                             {level}
                         </span>
                     ))}
+                    {incidents.length > 0 && <span className="fire-incident-legend"><i />Past verified fire incident</span>}
                 </div>
             )}
             {mapError && <p className="map-error" role="status">{mapError}</p>}

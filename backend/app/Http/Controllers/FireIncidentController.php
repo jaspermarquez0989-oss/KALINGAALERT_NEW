@@ -2,11 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\UserRole;
 use App\Models\FireIncident;
+use App\Models\User;
+use App\Notifications\FireIncidentVerified;
 use App\Services\AuditRecorder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\Rule;
 
 class FireIncidentController extends Controller
@@ -129,6 +133,61 @@ class FireIncidentController extends Controller
         ]);
     }
 
+    public function myVerifiedIncidents(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $incidents = FireIncident::query()
+            ->where('verification_status', 'verified')
+            ->where('barangay', $user->barangay)
+            ->orderByDesc('reviewed_at')
+            ->limit(100)
+            ->get([
+                'id',
+                'occurred_at',
+                'barangay',
+                'sitio',
+                'incident_type',
+                'latitude',
+                'longitude',
+                'reviewed_at',
+            ]);
+        $notifications = $user->unreadNotifications()
+            ->where('type', FireIncidentVerified::class)
+            ->orderBy('created_at')
+            ->get();
+
+        return response()->json([
+            'data' => $incidents->map(fn (FireIncident $incident): array => [
+                'id' => $incident->id,
+                'occurred_at' => $incident->occurred_at?->toIso8601String(),
+                'barangay' => $incident->barangay,
+                'sitio' => $incident->sitio,
+                'incident_type' => $incident->incident_type,
+                'latitude' => $incident->latitude,
+                'longitude' => $incident->longitude,
+                'reviewed_at' => $incident->reviewed_at?->toIso8601String(),
+            ])->values(),
+            'notifications' => $notifications->map(fn ($notification): array => [
+                'id' => $notification->id,
+                ...$notification->data,
+            ])->values(),
+            'meta' => [
+                'unread_count' => $notifications->count(),
+            ],
+        ]);
+    }
+
+    public function markFireIncidentNotificationAsRead(Request $request, string $notification): JsonResponse
+    {
+        $record = $request->user()->notifications()
+            ->whereKey($notification)
+            ->where('type', FireIncidentVerified::class)
+            ->firstOrFail();
+        $record->markAsRead();
+
+        return response()->json(['message' => 'Past fire incident notification acknowledged.']);
+    }
+
     public function review(Request $request, FireIncident $fireIncident, AuditRecorder $audit): JsonResponse
     {
         $validated = $request->validate([
@@ -160,6 +219,15 @@ class FireIncidentController extends Controller
                 'barangay' => $incident->barangay,
                 'source_reference' => $incident->source_reference,
             ]);
+
+            if ($validated['decision'] === 'verified') {
+                $residents = User::query()
+                    ->where('role', UserRole::CommunityResident->value)
+                    ->where('is_active', true)
+                    ->where('barangay', $incident->barangay)
+                    ->get();
+                Notification::send($residents, new FireIncidentVerified($incident));
+            }
 
             return $incident->load(['submitter', 'reviewer']);
         });

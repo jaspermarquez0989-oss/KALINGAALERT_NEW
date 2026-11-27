@@ -23,7 +23,7 @@ import {
 } from './pages.jsx';
 import FireIncidentsPage from './FireIncidentsPage.jsx';
 import FireRiskPredictionPage from './FireRiskPredictionPage.jsx';
-import { LoadingState, Notice, roleLabel } from './ui.jsx';
+import { ADVISORY_REFRESH_INTERVAL_MS, LoadingState, Notice, roleLabel } from './ui.jsx';
 
 const staffRoles = ['system_admin', 'mdrrmo', 'bfp_officer', 'alert_operator'];
 const alertRoles = ['system_admin', 'mdrrmo', 'alert_operator'];
@@ -43,6 +43,35 @@ function unreadAlertContent(alerts) {
         link.href = `/my-alerts/${encodeURIComponent(alert.id)}`;
         link.textContent = alert.title;
         list.append(link);
+    });
+
+    content.append(description, list);
+
+    return content;
+}
+
+function fireIncidentNotificationContent(notifications) {
+    const content = document.createElement('div');
+    const description = document.createElement('p');
+    const list = document.createElement('div');
+
+    content.className = 'swal-advisory-content';
+    description.textContent = 'These are verified past incidents, not live fire emergencies.';
+    list.className = 'swal-advisory-list';
+
+    notifications.forEach((incident) => {
+        const item = document.createElement('div');
+        const location = document.createElement('strong');
+        const details = document.createElement('p');
+        const occurredAt = incident.occurred_at
+            ? new Date(incident.occurred_at).toLocaleString()
+            : 'Date not recorded';
+
+        item.className = 'swal-fire-incident-item';
+        location.textContent = `Past fire incident · ${incident.barangay}`;
+        details.textContent = `${incident.incident_type.replaceAll('_', ' ')} · ${occurredAt}`;
+        item.append(location, details);
+        list.append(item);
     });
 
     content.append(description, list);
@@ -200,18 +229,22 @@ export default function App() {
             return undefined;
         }
 
-        if (/^\/my-alerts(?:\/|$)/.test(window.location.pathname)) {
-            return undefined;
-        }
-
         let isCurrent = true;
+        let refreshTimeout;
+        let notificationCheckErrorShown = false;
         const dismissalKey = `kalinga_alert_prompt_dismissed_${user.id}`;
 
         async function showUnreadAlerts() {
             try {
-                const status = await api('/my/alerts/status');
+                const isOnMyAlerts = /^\/my-alerts(?:\/|$)/.test(window.location.pathname);
+                const [status, fireIncidentStatus] = await Promise.all([
+                    isOnMyAlerts ? Promise.resolve({ alerts: [], unread_count: 0 }) : api('/my/alerts/status'),
+                    api('/my/fire-incidents'),
+                ]);
+                notificationCheckErrorShown = false;
                 const alerts = status.alerts ?? [];
                 const unreadCount = Number(status.unread_count ?? alerts.length);
+                const incidentNotifications = fireIncidentStatus.notifications ?? [];
 
                 if (!isCurrent) {
                     return;
@@ -219,35 +252,59 @@ export default function App() {
 
                 if (unreadCount <= 0 || alerts.length === 0) {
                     sessionStorage.removeItem(dismissalKey);
-                    return;
+                } else if (sessionStorage.getItem(dismissalKey) !== 'true') {
+                    const result = await Swal.fire({
+                        icon: 'info',
+                        title: `${unreadCount} unread community ${unreadCount === 1 ? 'advisory' : 'advisories'}`,
+                        html: unreadAlertContent(alerts),
+                        showCancelButton: true,
+                        confirmButtonText: 'View all advisories',
+                        cancelButtonText: 'Close for now',
+                        confirmButtonColor: '#1d5b45',
+                    });
+
+                    if (isCurrent && result.isConfirmed) {
+                        sessionStorage.setItem(dismissalKey, 'true');
+                        window.location.assign('/my-alerts');
+                        return;
+                    }
                 }
 
-                if (sessionStorage.getItem(dismissalKey) === 'true') {
-                    return;
-                }
+                if (isCurrent && incidentNotifications.length > 0) {
+                    const result = await Swal.fire({
+                        icon: 'info',
+                        title: `${incidentNotifications.length} verified past ${incidentNotifications.length === 1 ? 'fire incident' : 'fire incidents'}`,
+                        html: fireIncidentNotificationContent(incidentNotifications),
+                        showCancelButton: true,
+                        confirmButtonText: 'View map',
+                        cancelButtonText: 'Acknowledge',
+                        confirmButtonColor: '#1d5b45',
+                    });
 
-                const result = await Swal.fire({
-                    icon: 'info',
-                    title: `${unreadCount} unread community ${unreadCount === 1 ? 'advisory' : 'advisories'}`,
-                    html: unreadAlertContent(alerts),
-                    showCancelButton: true,
-                    confirmButtonText: 'View all advisories',
-                    cancelButtonText: 'Close for now',
-                    confirmButtonColor: '#1d5b45',
-                });
+                    if (isCurrent && (result.isConfirmed || result.dismiss === Swal.DismissReason.cancel)) {
+                        await Promise.all(incidentNotifications.map((incident) => api(
+                            `/my/fire-incidents/notifications/${encodeURIComponent(incident.id)}/read`,
+                            { method: 'PATCH' },
+                        )));
 
-                if (isCurrent && result.isConfirmed) {
-                    sessionStorage.setItem(dismissalKey, 'true');
-                    window.location.assign('/my-alerts');
+                        if (result.isConfirmed) {
+                            window.location.assign('/dashboard');
+                        }
+                    }
                 }
             } catch (error) {
-                if (isCurrent) {
+                if (isCurrent && !notificationCheckErrorShown) {
+                    notificationCheckErrorShown = true;
                     await Swal.fire({
                         icon: 'error',
                         title: 'Unable to check notifications',
                         text: error.message,
                         confirmButtonColor: '#1d5b45',
                     });
+                }
+            } finally {
+                if (isCurrent) {
+                    refreshTimeout = window.setTimeout(showUnreadAlerts, ADVISORY_REFRESH_INTERVAL_MS);
                 }
             }
         }
@@ -256,6 +313,7 @@ export default function App() {
 
         return () => {
             isCurrent = false;
+            window.clearTimeout(refreshTimeout);
             Swal.close();
         };
     }, [user?.id, user?.role]);

@@ -670,7 +670,8 @@ class ApiV1Test extends TestCase
         $submitter = $this->makeUser(UserRole::BfpOfficer->value);
         $reviewer = $this->makeUser(UserRole::BfpOfficer->value);
         $manager = $this->makeUser(UserRole::MdrrmoPersonnel->value);
-        $resident = $this->makeUser(UserRole::CommunityResident->value);
+        $resident = $this->makeUser(UserRole::CommunityResident->value, ['barangay' => 'Poblacion']);
+        $residentInAnotherBarangay = $this->makeUser(UserRole::CommunityResident->value, ['barangay' => 'Anilao']);
         $submitterToken = $this->tokenFor($submitter);
         $this->clearJwtRequestState();
         $reviewerToken = $this->tokenFor($reviewer);
@@ -678,6 +679,8 @@ class ApiV1Test extends TestCase
         $managerToken = $this->tokenFor($manager);
         $this->clearJwtRequestState();
         $residentToken = $this->tokenFor($resident);
+        $this->clearJwtRequestState();
+        $otherResidentToken = $this->tokenFor($residentInAnotherBarangay);
         $this->clearJwtRequestState();
 
         $incidentData = [
@@ -716,6 +719,32 @@ class ApiV1Test extends TestCase
             ->assertOk()
             ->assertJsonPath('data.verification_status', 'verified')
             ->assertJsonPath('data.reviewer.id', $reviewer->id);
+
+        $this->clearJwtRequestState();
+        $residentIncidents = $this->withToken($residentToken)
+            ->getJson('/api/v1/my/fire-incidents')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $incidentId)
+            ->assertJsonPath('meta.unread_count', 1)
+            ->assertJsonPath('notifications.0.fire_incident_id', $incidentId)
+            ->assertJsonMissing(['source_reference' => 'BFP-2025-001']);
+        $notificationId = $residentIncidents->json('notifications.0.id');
+
+        $this->withToken($residentToken)
+            ->patchJson("/api/v1/my/fire-incidents/notifications/{$notificationId}/read")
+            ->assertOk();
+
+        $this->withToken($residentToken)
+            ->getJson('/api/v1/my/fire-incidents')
+            ->assertOk()
+            ->assertJsonPath('meta.unread_count', 0);
+
+        $this->clearJwtRequestState();
+        $this->withToken($otherResidentToken)
+            ->getJson('/api/v1/my/fire-incidents')
+            ->assertOk()
+            ->assertJsonCount(0, 'data')
+            ->assertJsonPath('meta.unread_count', 0);
 
         $this->clearJwtRequestState();
         $pending = $this->withToken($managerToken)

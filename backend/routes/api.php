@@ -83,6 +83,9 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
             Route::get('/my/alerts', [AlertController::class, 'myAlerts'])->name('my-alerts.index');
             Route::get('/my/alerts/status', [AlertController::class, 'residentStatus'])->name('my-alerts.status');
             Route::get('/my/alerts/{alert}', [AlertController::class, 'viewForResident'])->name('my-alerts.show');
+            Route::get('/my/fire-incidents', [FireIncidentController::class, 'myVerifiedIncidents'])->name('my-fire-incidents.index');
+            Route::patch('/my/fire-incidents/notifications/{notification}/read', [FireIncidentController::class, 'markFireIncidentNotificationAsRead'])
+                ->name('my-fire-incidents.read');
         });
 
         Route::middleware('role:system_admin,mdrrmo')->group(function (): void {

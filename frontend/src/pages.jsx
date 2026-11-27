@@ -237,10 +237,11 @@ export function DashboardPage({ user }) {
         async function loadDashboard(isInitialLoad = false) {
             try {
                 if (user.role === 'resident') {
-                    const [alertsResponse, status, coverageResponse] = await Promise.all([
+                    const [alertsResponse, status, coverageResponse, incidentsResponse] = await Promise.all([
                         api('/my/alerts?per_page=100'),
                         api('/my/alerts/status'),
                         api('/my/coverage'),
+                        api('/my/fire-incidents'),
                     ]);
                     if (isCurrent) {
                         const alerts = alertsResponse.data.map((item) => ({
@@ -263,6 +264,7 @@ export function DashboardPage({ user }) {
                             alerts,
                             status,
                             areas,
+                            incidents: incidentsResponse.data ?? [],
                         });
                     }
                 } else {
@@ -415,9 +417,9 @@ export function DashboardPage({ user }) {
             </div>
             <Panel title={isResident ? 'Community risk areas' : 'Mapped coverage'} className="map-panel">
                 {data.areas.length || isResident
-                    ? <MapView areas={mapAreas.filter((area) => area.is_active)} />
+                    ? <MapView areas={mapAreas.filter((area) => area.is_active)} incidents={isResident ? data.incidents : undefined} />
                     : <EmptyState title="No active mapped areas" />}
-                {isResident && <p className="muted">This map shows all active public risk areas and current advisory level. Your exact home location stays private.</p>}
+                {isResident && <p className="muted">This map shows active public risk areas and verified past fire incidents in your barangay. Past incident pins are historical records, not current emergency alerts. Your exact home location stays private.</p>}
                 {isResident && data.areas.length === 0 && <Notice tone="info">No active risk areas are currently mapped.</Notice>}
             </Panel>
             <p className="disclaimer"><strong>Safety notice</strong> Historical fire records are not live incident reports or fire predictions. KalingaAlert does not dispatch rescue. Follow official warnings and local emergency instructions.</p>
