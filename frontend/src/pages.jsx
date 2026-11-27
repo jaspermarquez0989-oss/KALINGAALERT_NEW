@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, saveToken } from './api.js';
 import { formatCoordinatePair, formatLatitude, formatLongitude } from './coordinates.js';
-import bongabongBoundary from './data/bongabong-boundary.json';
 import { bongabongBarangays } from './data/bongabong-barangays.js';
+import { lookupBongabongBarangay } from './data/lookup-bongabong-barangay.js';
 import { intensityColorForLevel } from './intensity.js';
 import MapView from './MapView.jsx';
 import {
@@ -24,11 +24,6 @@ import {
 } from './ui.jsx';
 
 const alertSeverities = ['advisory', 'watch', 'warning', 'emergency'];
-const bongabongBarangayAliases = {
-    'Bagumbayan I': ['Bagong Bayan I'],
-    'Bagumbayan II': ['Bagong Bayan II'],
-    Polusahi: ['Pulosahi'],
-};
 const advisoryIntensities = [
     { value: 1, label: '1 - Very low' },
     { value: 2, label: '2 - Low' },
@@ -37,25 +32,6 @@ const advisoryIntensities = [
     { value: 5, label: '5 - Very high' },
 ];
 
-function isWithinBongabong(longitude, latitude) {
-    const ring = bongabongBoundary.geometry.coordinates[0];
-    let inside = false;
-
-    for (let current = 0, previous = ring.length - 1; current < ring.length; previous = current++) {
-        const [currentLongitude, currentLatitude] = ring[current];
-        const [previousLongitude, previousLatitude] = ring[previous];
-        const crossesLatitude = (currentLatitude > latitude) !== (previousLatitude > latitude);
-        const intersection = ((previousLongitude - currentLongitude) * (latitude - currentLatitude)
-            / ((previousLatitude - currentLatitude) || Number.EPSILON))
-            + currentLongitude;
-
-        if (crossesLatitude && longitude < intersection) {
-            inside = !inside;
-        }
-    }
-
-    return inside;
-}
 const staffRoles = ['system_admin', 'mdrrmo', 'bfp_officer', 'alert_operator'];
 
 function IntensityIndicator({ value, compact = false }) {
@@ -1058,58 +1034,13 @@ function RiskAreaForm({ id }) {
 
     async function focusMapOnBarangay(barangay) {
         const lookupId = ++locationLookupId.current;
-        const aliases = bongabongBarangayAliases[barangay] ?? [];
-        const names = [barangay, ...aliases].map((name) => name.toLowerCase());
 
         setMapFocus(null);
         setLocationLookupError('');
         setLocatingBarangay(barangay);
 
         try {
-            const query = new URLSearchParams({
-                q: `${barangay}, Oriental Mindoro, Philippines`,
-                lat: '12.7074',
-                lon: '121.4056',
-                zoom: '12',
-                limit: '20',
-            });
-            const response = await fetch(`https://photon.komoot.io/api/?${query}`);
-
-            if (!response.ok) {
-                throw new Error('The map search service is unavailable. You can still locate the barangay manually on the map.');
-            }
-
-            const result = await response.json();
-            const features = Array.isArray(result.features) ? result.features : [];
-            const isLocalResult = (feature) => {
-                const properties = feature.properties ?? {};
-                const coordinates = feature.geometry?.coordinates;
-                const longitude = Number(coordinates?.[0]);
-                const latitude = Number(coordinates?.[1]);
-                const matchedName = [properties.name, properties.locality, properties.city]
-                    .some((name) => typeof name === 'string' && names.includes(name.toLowerCase()));
-                const inOrientalMindoro = !properties.state
-                    || (typeof properties.state === 'string' && properties.state.toLowerCase() === 'oriental mindoro');
-
-                return matchedName
-                    && properties.countrycode === 'PH'
-                    && inOrientalMindoro
-                    && Number.isFinite(latitude)
-                    && Number.isFinite(longitude)
-                    && isWithinBongabong(longitude, latitude);
-            };
-            const feature = features.find((candidate) => {
-                const properties = candidate.properties ?? {};
-                return properties.osm_key === 'place'
-                    && names.includes(String(properties.name ?? '').toLowerCase())
-                    && isLocalResult(candidate);
-            }) ?? features.find(isLocalResult);
-
-            if (!feature) {
-                throw new Error(`Could not find ${barangay} on the map. You can still locate it manually.`);
-            }
-
-            const [longitude, latitude] = feature.geometry.coordinates.map(Number);
+            const { latitude, longitude } = await lookupBongabongBarangay(barangay);
 
             if (lookupId === locationLookupId.current) {
                 setMapFocus({ latitude, longitude, zoom: 14, barangay });

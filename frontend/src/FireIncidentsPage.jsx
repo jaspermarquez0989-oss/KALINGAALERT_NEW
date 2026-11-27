@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
 import { formatCoordinatePair } from './coordinates.js';
 import { bongabongBarangays } from './data/bongabong-barangays.js';
+import { lookupBongabongBarangay } from './data/lookup-bongabong-barangay.js';
 import {
     EmptyState,
     Field,
@@ -104,6 +105,9 @@ export default function FireIncidentsPage({ user }) {
     const [error, setError] = useState('');
     const [notice, setNotice] = useState('');
     const [refreshKey, setRefreshKey] = useState(0);
+    const [locatingBarangay, setLocatingBarangay] = useState('');
+    const [locationError, setLocationError] = useState('');
+    const locationLookupId = useRef(0);
 
     useEffect(() => {
         let isCurrent = true;
@@ -131,10 +135,44 @@ export default function FireIncidentsPage({ user }) {
         return () => { isCurrent = false; };
     }, [filter, page, refreshKey]);
 
+    useEffect(() => () => {
+        locationLookupId.current += 1;
+    }, []);
+
+    async function selectBarangay(barangay) {
+        const lookupId = ++locationLookupId.current;
+        setForm((current) => ({ ...current, barangay, latitude: '', longitude: '' }));
+        setLocationError('');
+        setLocatingBarangay('');
+
+        if (!barangay) return;
+
+        setLocatingBarangay(barangay);
+        try {
+            const coordinates = await lookupBongabongBarangay(barangay);
+            if (lookupId === locationLookupId.current) {
+                setForm((current) => ({
+                    ...current,
+                    latitude: String(coordinates.latitude),
+                    longitude: String(coordinates.longitude),
+                }));
+            }
+        } catch (requestError) {
+            if (lookupId === locationLookupId.current) {
+                setLocationError(requestError.message);
+            }
+        } finally {
+            if (lookupId === locationLookupId.current) {
+                setLocatingBarangay('');
+            }
+        }
+    }
+
     async function submitIncident(event) {
         event.preventDefault();
         setError('');
         setNotice('');
+        setLocationError('');
         setSaving(true);
 
         try {
@@ -220,6 +258,7 @@ export default function FireIncidentsPage({ user }) {
 
     function updateField(name, value) {
         setForm((current) => ({ ...current, [name]: value }));
+        if (name === 'latitude' || name === 'longitude') setLocationError('');
     }
 
     return (
@@ -248,7 +287,7 @@ export default function FireIncidentsPage({ user }) {
                                 <TextInput type="datetime-local" required max={localDateTimeValue()} value={form.occurred_at} onChange={(event) => updateField('occurred_at', event.target.value)} />
                             </Field>
                             <Field label="Barangay">
-                                <SelectInput required value={form.barangay} onChange={(event) => updateField('barangay', event.target.value)}>
+                                <SelectInput required value={form.barangay} onChange={(event) => selectBarangay(event.target.value)}>
                                     <option value="">Select a barangay</option>
                                     {bongabongBarangays.map((barangay) => <option key={barangay} value={barangay}>{barangay}</option>)}
                                 </SelectInput>
@@ -271,7 +310,7 @@ export default function FireIncidentsPage({ user }) {
                             <Field label="Injuries">
                                 <TextInput type="number" min="0" step="1" required value={form.injuries} onChange={(event) => updateField('injuries', event.target.value)} />
                             </Field>
-                            <Field label="Latitude" hint="Use coordinates from the official incident record.">
+                            <Field label="Latitude" hint="Starts at the mapped barangay point; use official incident coordinates if available.">
                                 <TextInput type="number" step="any" min="-90" max="90" required value={form.latitude} onChange={(event) => updateField('latitude', event.target.value)} />
                             </Field>
                             <Field label="Longitude">
@@ -284,6 +323,8 @@ export default function FireIncidentsPage({ user }) {
                                 <TextInput type="number" min="0" step="0.01" value={form.property_damage_estimate} onChange={(event) => updateField('property_damage_estimate', event.target.value)} />
                             </Field>
                         </div>
+                        {locatingBarangay && <Notice tone="info">Finding mapped coordinates for {locatingBarangay}…</Notice>}
+                        {locationError && <Notice>{locationError}</Notice>}
                         <Field label="Official BFP source reference" hint="Required. For example, an incident log or report number.">
                             <TextInput required maxLength="255" value={form.source_reference} onChange={(event) => updateField('source_reference', event.target.value)} />
                         </Field>
@@ -294,7 +335,7 @@ export default function FireIncidentsPage({ user }) {
                             <TextArea maxLength="5000" value={form.details} onChange={(event) => updateField('details', event.target.value)} />
                         </Field>
                         <FormActions>
-                            <button className="button" disabled={saving} type="submit">{saving ? 'Submitting...' : 'Submit for BFP verification'}</button>
+                            <button className="button" disabled={saving || Boolean(locatingBarangay)} type="submit">{saving ? 'Submitting...' : 'Submit for BFP verification'}</button>
                         </FormActions>
                     </form>
                 </Panel>
