@@ -21,4 +21,4 @@ RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoload
     && chown -R www-data:www-data storage bootstrap/cache
 
 EXPOSE 10000
-CMD ["apache2-foreground"]
+CMD ["sh", "-c", "composer deploy && exec apache2-foreground"]
