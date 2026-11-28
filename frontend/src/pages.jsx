@@ -32,6 +32,22 @@ const advisoryIntensities = [
     { value: 5, label: '5 - Very high' },
 ];
 
+function supportsBrowserPush() {
+    return typeof window !== 'undefined'
+        && window.isSecureContext
+        && 'Notification' in window
+        && 'serviceWorker' in navigator
+        && 'PushManager' in window;
+}
+
+function decodeVapidPublicKey(value) {
+    const paddedValue = value + '='.repeat((4 - (value.length % 4)) % 4);
+    const base64Value = paddedValue.replace(/-/g, '+').replace(/_/g, '/');
+    const bytes = window.atob(base64Value);
+
+    return Uint8Array.from(bytes, (character) => character.charCodeAt(0));
+}
+
 const staffRoles = ['system_admin', 'mdrrmo', 'bfp_officer', 'alert_operator'];
 
 function IntensityIndicator({ value, compact = false }) {
@@ -1234,6 +1250,10 @@ export function ProfilePage({ user }) {
     const [requestError, setRequestError] = useState('');
     const [notice, setNotice] = useState('');
     const [saving, setSaving] = useState(false);
+    const [pushStatus, setPushStatus] = useState('checking');
+    const [pushError, setPushError] = useState('');
+    const [pushNotice, setPushNotice] = useState('');
+    const [pushBusy, setPushBusy] = useState(false);
 
     useEffect(() => {
         if (data?.data && !form) {
@@ -1250,6 +1270,53 @@ export function ProfilePage({ user }) {
             });
         }
     }, [data, form]);
+
+    useEffect(() => {
+        if (user.role !== 'resident') {
+            return undefined;
+        }
+
+        let isCurrent = true;
+
+        async function checkPushSubscription() {
+            if (!supportsBrowserPush()) {
+                setPushStatus('unsupported');
+                return;
+            }
+
+            try {
+                const registration = await navigator.serviceWorker.getRegistration('/');
+                const subscription = await registration?.pushManager.getSubscription();
+
+                if (!isCurrent) {
+                    return;
+                }
+
+                if (subscription) {
+                    const subscriptionStatus = await api(
+                        `/my/push-subscriptions/status?endpoint=${encodeURIComponent(subscription.endpoint)}`,
+                    );
+
+                    if (isCurrent) {
+                        setPushStatus(subscriptionStatus.data.enabled ? 'enabled' : 'disabled');
+                    }
+                } else {
+                    setPushStatus(Notification.permission === 'denied' ? 'denied' : 'disabled');
+                }
+            } catch (subscriptionError) {
+                if (isCurrent) {
+                    setPushStatus('disabled');
+                    setPushError(subscriptionError.message);
+                }
+            }
+        }
+
+        checkPushSubscription();
+
+        return () => {
+            isCurrent = false;
+        };
+    }, [user.role]);
 
     async function handleSubmit(event) {
         event.preventDefault();
@@ -1274,6 +1341,71 @@ export function ProfilePage({ user }) {
             setRequestError(submitError.message);
         } finally {
             setSaving(false);
+        }
+    }
+
+    async function handleBrowserPushToggle() {
+        setPushError('');
+        setPushNotice('');
+        setPushBusy(true);
+
+        try {
+            if (!supportsBrowserPush()) {
+                throw new Error('Browser push notifications require a supported browser and a secure HTTPS connection.');
+            }
+
+            if (pushStatus === 'enabled') {
+                const registration = await navigator.serviceWorker.getRegistration('/');
+                const existingSubscription = await registration?.pushManager.getSubscription();
+
+                if (!existingSubscription) {
+                    setPushStatus('disabled');
+                    return;
+                }
+
+                await api('/my/push-subscriptions', {
+                    method: 'DELETE',
+                    body: { endpoint: existingSubscription.endpoint },
+                });
+
+                const unsubscribed = await existingSubscription.unsubscribe();
+                if (!unsubscribed) {
+                    throw new Error('The browser could not disable push notifications. Try again from your browser settings.');
+                }
+
+                setPushStatus('disabled');
+                setPushNotice('Browser notifications are disabled.');
+                return;
+            }
+
+            const permission = Notification.permission === 'granted'
+                ? 'granted'
+                : await Notification.requestPermission();
+
+            if (permission !== 'granted') {
+                setPushStatus(permission === 'denied' ? 'denied' : 'disabled');
+                throw new Error('Notification permission was not granted. You can enable it in your browser settings.');
+            }
+
+            const keyResponse = await api('/my/push-subscriptions/vapid-key');
+            const serviceWorker = await navigator.serviceWorker.register('/sw.js');
+            const existingSubscription = await serviceWorker.pushManager.getSubscription();
+            const subscription = existingSubscription ?? await serviceWorker.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: decodeVapidPublicKey(keyResponse.data.public_key),
+            });
+
+            await api('/my/push-subscriptions', {
+                method: 'POST',
+                body: subscription.toJSON(),
+            });
+
+            setPushStatus('enabled');
+            setPushNotice('Browser notifications are enabled for community advisories and verified fire incidents.');
+        } catch (subscriptionError) {
+            setPushError(subscriptionError.message);
+        } finally {
+            setPushBusy(false);
         }
     }
 
@@ -1307,6 +1439,17 @@ export function ProfilePage({ user }) {
                             <Field label="Longitude"><TextInput type="number" step="any" min="-180" max="180" value={form.location_longitude} onChange={(event) => setForm({ ...form, location_longitude: event.target.value })} /></Field>
                         </div>
                     </div>
+                    {user.role === 'resident' && <div className="profile-location">
+                        <h3>Browser push notifications</h3>
+                        <p className="field-hint">Receive published advisories and verified fire incident updates, even when KalingaAlert is not open.</p>
+                        {pushStatus === 'unsupported' && <Notice tone="info">Push notifications require a supported browser and a secure HTTPS connection.</Notice>}
+                        {pushStatus === 'denied' && <Notice tone="info">Notifications are blocked by your browser. Allow them for KalingaAlert in your browser settings, then return here.</Notice>}
+                        {pushError && <Notice>{pushError}</Notice>}
+                        {pushNotice && <Notice tone="success">{pushNotice}</Notice>}
+                        {pushStatus !== 'unsupported' && <button className="button button-muted" disabled={pushBusy || pushStatus === 'checking'} onClick={() => void handleBrowserPushToggle()} type="button">
+                            {pushBusy ? 'Updating notifications…' : pushStatus === 'enabled' ? 'Disable browser notifications' : 'Enable browser notifications'}
+                        </button>}
+                    </div>}
                     <div className="profile-location"><h3>Change password</h3>
                         <div className="stack-form">
                             <Field label="Current password"><TextInput type="password" autoComplete="current-password" value={form.current_password} onChange={(event) => setForm({ ...form, current_password: event.target.value })} /></Field>

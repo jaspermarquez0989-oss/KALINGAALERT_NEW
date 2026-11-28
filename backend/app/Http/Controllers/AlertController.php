@@ -6,6 +6,7 @@ use App\Enums\HazardType;
 use App\Enums\UserRole;
 use App\Http\Resources\Api\V1\AlertRecipientResource;
 use App\Http\Resources\Api\V1\AlertResource;
+use App\Jobs\SendWebPushNotifications;
 use App\Models\Alert;
 use App\Models\AlertRecipient;
 use App\Models\FireRiskPrediction;
@@ -332,6 +333,20 @@ class AlertController extends Controller
 
             return $residents->count();
         });
+
+        $publishedAlert = $alert->fresh('source');
+        $hazardType = $publishedAlert->source?->source_type;
+        SendWebPushNotifications::dispatch(
+            SendWebPushNotifications::AUDIENCE_ALERT,
+            (int) $publishedAlert->id,
+            $hazardType === HazardType::Fire->value ? 'New fire advisory' : 'New weather advisory',
+            $publishedAlert->title.($publishedAlert->affected_barangay ? ' - '.$publishedAlert->affected_barangay : ''),
+            [
+                'url' => '/my-alerts/'.$publishedAlert->id,
+                'alertId' => $publishedAlert->id,
+                'hazardType' => $hazardType,
+            ],
+        );
 
         $message = $recipientCount === 0
             ? 'Alert published. No active resident accounts are currently registered.'

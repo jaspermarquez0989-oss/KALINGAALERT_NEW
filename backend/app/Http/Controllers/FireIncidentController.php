@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\UserRole;
+use App\Jobs\SendWebPushNotifications;
 use App\Models\FireIncident;
 use App\Models\User;
 use App\Notifications\FireIncidentVerified;
@@ -232,6 +233,19 @@ class FireIncidentController extends Controller
 
             return $incident->load(['submitter', 'reviewer']);
         });
+
+        if ($validated['decision'] === 'verified') {
+            SendWebPushNotifications::dispatch(
+                SendWebPushNotifications::AUDIENCE_VERIFIED_FIRE_INCIDENT,
+                (int) $incident->id,
+                'Verified fire incident',
+                'A fire incident was verified in '.$incident->barangay.'.',
+                [
+                    'url' => '/dashboard',
+                    'incidentId' => $incident->id,
+                ],
+            );
+        }
 
         return response()->json([
             'message' => 'Fire incident '.$validated['decision'].'.',

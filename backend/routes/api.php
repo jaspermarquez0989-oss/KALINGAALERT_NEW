@@ -3,6 +3,7 @@
 use App\Http\Controllers\AlertController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\ProfileController;
+use App\Http\Controllers\Api\V1\WebPushSubscriptionController;
 use App\Http\Controllers\FireIncidentController;
 use App\Http\Controllers\FireRiskPredictionController;
 use App\Http\Controllers\HazardSourceController;
@@ -83,6 +84,14 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
         });
 
         Route::middleware('role:resident')->group(function (): void {
+            Route::get('/my/push-subscriptions/status', [WebPushSubscriptionController::class, 'status'])
+                ->name('my.push-subscriptions.status');
+            Route::get('/my/push-subscriptions/vapid-key', [WebPushSubscriptionController::class, 'vapidKey'])
+                ->name('my.push-subscriptions.vapid-key');
+            Route::post('/my/push-subscriptions', [WebPushSubscriptionController::class, 'store'])
+                ->name('my.push-subscriptions.store');
+            Route::delete('/my/push-subscriptions', [WebPushSubscriptionController::class, 'destroy'])
+                ->name('my.push-subscriptions.destroy');
             Route::get('/my/coverage', [RiskAreaController::class, 'myCoverage'])->name('my.coverage');
             Route::get('/my/alerts', [AlertController::class, 'myAlerts'])->name('my-alerts.index');
             Route::get('/my/alerts/status', [AlertController::class, 'residentStatus'])->name('my-alerts.status');

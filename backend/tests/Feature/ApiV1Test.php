@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\UserRole;
+use App\Jobs\SendWebPushNotifications;
 use App\Models\Alert;
 use App\Models\AuditLog;
 use App\Models\FireRiskPrediction;
@@ -11,6 +12,7 @@ use App\Models\RiskArea;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
@@ -182,6 +184,8 @@ class ApiV1Test extends TestCase
 
     public function test_staff_can_create_approve_publish_and_filter_alerts_through_the_api(): void
     {
+        Bus::fake([SendWebPushNotifications::class]);
+
         $creator = $this->makeUser(UserRole::AlertOperator->value, ['email' => 'operator@example.com']);
         $approver = $this->makeUser(UserRole::MdrrmoPersonnel->value, ['email' => 'manager@example.com']);
         $sourceAuthor = $this->makeUser(UserRole::BfpOfficer->value, ['email' => 'bfp@example.com']);
@@ -244,6 +248,12 @@ class ApiV1Test extends TestCase
             ->assertOk()
             ->assertJsonPath('data.status', Alert::STATUS_PUBLISHED);
 
+        Bus::assertDispatched(
+            SendWebPushNotifications::class,
+            fn (SendWebPushNotifications $job): bool => $job->audience === SendWebPushNotifications::AUDIENCE_ALERT
+                && $job->sourceId === $alert->id,
+        );
+
         $this->assertDatabaseHas('alert_recipients', [
             'alert_id' => $alert->id,
             'user_id' => $resident->id,
@@ -304,6 +314,12 @@ class ApiV1Test extends TestCase
             ->patchJson("/api/v1/alerts/{$revision->id}/publish")
             ->assertOk()
             ->assertJsonPath('data.status', Alert::STATUS_PUBLISHED);
+
+        Bus::assertDispatched(
+            SendWebPushNotifications::class,
+            fn (SendWebPushNotifications $job): bool => $job->audience === SendWebPushNotifications::AUDIENCE_ALERT
+                && $job->sourceId === $revision->id,
+        );
 
         $this->assertDatabaseHas('alerts', [
             'id' => $alert->id,
@@ -732,6 +748,8 @@ class ApiV1Test extends TestCase
 
     public function test_fire_incident_records_allow_independent_bfp_review_and_only_verified_cases_export(): void
     {
+        Bus::fake([SendWebPushNotifications::class]);
+
         $submitter = $this->makeUser(UserRole::BfpOfficer->value);
         $reviewer = $this->makeUser(UserRole::BfpOfficer->value);
         $manager = $this->makeUser(UserRole::MdrrmoPersonnel->value);
@@ -787,6 +805,12 @@ class ApiV1Test extends TestCase
             ->assertOk()
             ->assertJsonPath('data.verification_status', 'verified')
             ->assertJsonPath('data.reviewer.id', $reviewer->id);
+
+        Bus::assertDispatched(
+            SendWebPushNotifications::class,
+            fn (SendWebPushNotifications $job): bool => $job->audience === SendWebPushNotifications::AUDIENCE_VERIFIED_FIRE_INCIDENT
+                && $job->sourceId === $incidentId,
+        );
 
         $this->clearJwtRequestState();
         $residentIncidents = $this->withToken($residentToken)
