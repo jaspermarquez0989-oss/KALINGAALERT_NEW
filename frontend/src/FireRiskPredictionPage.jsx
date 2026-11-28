@@ -41,6 +41,7 @@ export default function FireRiskPredictionPage() {
     const [modelInfo, setModelInfo] = useState(null);
     const [form, setForm] = useState(initialForm);
     const [result, setResult] = useState(null);
+    const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const score = result ? Math.min(100, Math.max(0, result.score_percent)) : 0;
@@ -54,6 +55,9 @@ export default function FireRiskPredictionPage() {
             })
             .catch((requestError) => {
                 if (isCurrent) setError(requestError.message);
+            })
+            .finally(() => {
+                if (isCurrent) setLoading(false);
             });
         return () => { isCurrent = false; };
     }, []);
