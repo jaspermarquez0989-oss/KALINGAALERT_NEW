@@ -183,6 +183,7 @@ class KalingaAlertWorkflowTest extends TestCase
 
         $alert = Alert::query()->firstOrFail();
         $this->assertSame('Bongabong', $alert->affected_barangay);
+        $this->assertSame(68.5, $alert->affected_score_percent);
         $this->assertSame($prediction->id, $alert->fire_risk_prediction_id);
         $this->assertCount(0, $alert->riskAreas);
         $alert->update(['starts_at' => now()->addDay()]);

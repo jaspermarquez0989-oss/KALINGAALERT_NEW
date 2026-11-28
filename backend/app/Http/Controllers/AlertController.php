@@ -76,6 +76,7 @@ class AlertController extends Controller
                 'affected_barangay' => $prediction?->barangay,
                 'affected_latitude' => $prediction?->latitude,
                 'affected_longitude' => $prediction?->longitude,
+                'affected_score_percent' => $prediction?->score_percent,
                 'title' => $validated['title'],
                 'message' => $validated['message'],
                 'safety_instructions' => $validated['safety_instructions'],
@@ -155,6 +156,7 @@ class AlertController extends Controller
                 'affected_barangay' => $prediction?->barangay,
                 'affected_latitude' => $prediction?->latitude,
                 'affected_longitude' => $prediction?->longitude,
+                'affected_score_percent' => $prediction?->score_percent,
                 'title' => $validated['title'],
                 'message' => $validated['message'],
                 'safety_instructions' => $validated['safety_instructions'],
@@ -176,6 +178,7 @@ class AlertController extends Controller
                 'risk_area_ids' => $riskAreaIds,
                 'fire_risk_prediction_id' => $prediction?->id,
                 'affected_barangay' => $prediction?->barangay,
+                'affected_score_percent' => $prediction?->score_percent,
             ]);
         });
 
@@ -356,6 +359,7 @@ class AlertController extends Controller
                 'affected_barangay' => $alert->affected_barangay,
                 'affected_latitude' => $alert->affected_latitude,
                 'affected_longitude' => $alert->affected_longitude,
+                'affected_score_percent' => $alert->affected_score_percent,
                 'title' => $alert->title.' (Revised)',
                 'message' => $alert->message,
                 'safety_instructions' => $alert->safety_instructions,

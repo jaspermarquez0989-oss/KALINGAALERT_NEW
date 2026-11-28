@@ -361,6 +361,7 @@ class ApiV1Test extends TestCase
             ->assertCreated()
             ->assertJsonPath('data.hazard_source.source_type', 'fire')
             ->assertJsonPath('data.affected_barangay', 'Bongabong')
+            ->assertJsonPath('data.affected_score_percent', 68.5)
             ->assertJsonPath('data.fire_risk_prediction_id', $prediction->id)
             ->assertJsonPath('data.risk_areas', [])
             ->assertJsonPath('data.status', Alert::STATUS_DRAFT);

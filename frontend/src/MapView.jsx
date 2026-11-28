@@ -133,15 +133,22 @@ function fireAdvisoryPopupContent(advisory) {
     const root = document.createElement('div');
     const title = document.createElement('strong');
     const location = document.createElement('div');
+    const score = document.createElement('div');
     const severity = document.createElement('div');
     const note = document.createElement('p');
+    const scorePercent = Number(advisory.affected_score_percent);
 
     title.textContent = advisory.title ?? 'Published fire advisory';
     location.textContent = `Affected barangay: ${advisory.affected_barangay}`;
+    if (Number.isFinite(scorePercent)) {
+        score.textContent = `Fire possibility score: ${scorePercent.toFixed(1)} / 100`;
+    }
     severity.textContent = `Severity: ${advisory.severity}`;
     note.className = 'map-incident-notice';
     note.textContent = 'This pin marks the barangay reference point, not an exact fire location.';
-    root.append(title, location, severity, note);
+    root.append(title, location);
+    if (Number.isFinite(scorePercent)) root.append(score);
+    root.append(severity, note);
 
     return root;
 }
@@ -488,11 +495,14 @@ export default function MapView({
                 });
                 const marker = L.marker([latitude, longitude], {
                     icon,
-                    title: `Published fire advisory for ${advisory.affected_barangay}`,
+                    title: `Published fire advisory for ${advisory.affected_barangay}${Number.isFinite(Number(advisory.affected_score_percent)) ? ` · possibility score ${Number(advisory.affected_score_percent).toFixed(1)} / 100` : ''}`,
                     zIndexOffset: 600,
                 }).addTo(map);
+                const scorePercent = Number(advisory.affected_score_percent);
                 marker.bindTooltip(
-                    `Fire advisory · ${advisory.affected_barangay}`,
+                    Number.isFinite(scorePercent)
+                        ? `Fire possibility ${scorePercent.toFixed(1)} / 100`
+                        : `Fire advisory · ${advisory.affected_barangay}`,
                     { permanent: true, direction: 'top', offset: [0, -12] },
                 );
                 marker.bindPopup(fireAdvisoryPopupContent(advisory));
