@@ -136,18 +136,20 @@ function fireAdvisoryPopupContent(advisory) {
     const score = document.createElement('div');
     const severity = document.createElement('div');
     const note = document.createElement('p');
-    const scorePercent = Number(advisory.affected_score_percent);
+    const scorePercent = advisory.affected_score_percent == null
+        ? null
+        : Number(advisory.affected_score_percent);
 
     title.textContent = advisory.title ?? 'Published fire advisory';
     location.textContent = `Affected barangay: ${advisory.affected_barangay}`;
-    if (Number.isFinite(scorePercent)) {
+    if (scorePercent !== null && Number.isFinite(scorePercent)) {
         score.textContent = `Fire possibility score: ${scorePercent.toFixed(1)} / 100`;
     }
     severity.textContent = `Severity: ${advisory.severity}`;
     note.className = 'map-incident-notice';
     note.textContent = 'This pin marks the barangay reference point, not an exact fire location.';
     root.append(title, location);
-    if (Number.isFinite(scorePercent)) root.append(score);
+    if (scorePercent !== null && Number.isFinite(scorePercent)) root.append(score);
     root.append(severity, note);
 
     return root;
@@ -482,6 +484,9 @@ export default function MapView({
             for (const advisory of fireAdvisories) {
                 const latitude = Number(advisory.affected_latitude);
                 const longitude = Number(advisory.affected_longitude);
+                const scorePercent = advisory.affected_score_percent == null
+                    ? null
+                    : Number(advisory.affected_score_percent);
                 if (!Number.isFinite(latitude) || !Number.isFinite(longitude)
                     || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
                     continue;
@@ -495,12 +500,11 @@ export default function MapView({
                 });
                 const marker = L.marker([latitude, longitude], {
                     icon,
-                    title: `Published fire advisory for ${advisory.affected_barangay}${Number.isFinite(Number(advisory.affected_score_percent)) ? ` · possibility score ${Number(advisory.affected_score_percent).toFixed(1)} / 100` : ''}`,
+                    title: `Published fire advisory for ${advisory.affected_barangay}${scorePercent !== null && Number.isFinite(scorePercent) ? ` · possibility score ${scorePercent.toFixed(1)} / 100` : ''}`,
                     zIndexOffset: 600,
                 }).addTo(map);
-                const scorePercent = Number(advisory.affected_score_percent);
                 marker.bindTooltip(
-                    Number.isFinite(scorePercent)
+                    scorePercent !== null && Number.isFinite(scorePercent)
                         ? `Fire possibility ${scorePercent.toFixed(1)} / 100`
                         : `Fire advisory · ${advisory.affected_barangay}`,
                     { permanent: true, direction: 'top', offset: [0, -12] },

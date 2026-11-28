@@ -356,7 +356,7 @@ class ApiV1Test extends TestCase
             ->assertJsonValidationErrors(['hazard_source_id']);
 
         $this->clearJwtRequestState();
-        $this->withToken($token)
+        $response = $this->withToken($token)
             ->postJson('/api/v1/alerts', $payload)
             ->assertCreated()
             ->assertJsonPath('data.hazard_source.source_type', 'fire')
@@ -365,6 +365,14 @@ class ApiV1Test extends TestCase
             ->assertJsonPath('data.fire_risk_prediction_id', $prediction->id)
             ->assertJsonPath('data.risk_areas', [])
             ->assertJsonPath('data.status', Alert::STATUS_DRAFT);
+
+        Alert::query()->whereKey($response->json('data.id'))->update(['affected_score_percent' => null]);
+
+        $this->clearJwtRequestState();
+        $this->withToken($token)
+            ->getJson('/api/v1/alerts?status=draft')
+            ->assertOk()
+            ->assertJsonPath('data.0.affected_score_percent', 68.5);
     }
 
     public function test_only_system_administrators_and_mdrrmo_can_publish_a_draft_immediately(): void

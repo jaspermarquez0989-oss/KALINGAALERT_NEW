@@ -72,6 +72,11 @@ class Alert extends Model
         return $this->belongsTo(HazardSource::class, 'hazard_source_id');
     }
 
+    public function fireRiskPrediction(): BelongsTo
+    {
+        return $this->belongsTo(FireRiskPrediction::class);
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');

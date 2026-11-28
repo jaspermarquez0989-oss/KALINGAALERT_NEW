@@ -27,7 +27,7 @@ class AlertResource extends JsonResource
             'affected_barangay' => $this->affected_barangay,
             'affected_latitude' => $this->affected_latitude,
             'affected_longitude' => $this->affected_longitude,
-            'affected_score_percent' => $this->affected_score_percent,
+            'affected_score_percent' => $this->affected_score_percent ?? $this->fireRiskPrediction?->score_percent,
             'status' => $this->status,
             'starts_at' => $this->starts_at?->toIso8601String(),
             'ends_at' => $this->ends_at?->toIso8601String(),

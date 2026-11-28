@@ -28,7 +28,7 @@ class AlertController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         $query = Alert::query()
-            ->with(['source', 'creator', 'approver', 'riskAreas'])
+            ->with(['source', 'creator', 'approver', 'riskAreas', 'fireRiskPrediction'])
             ->withCount('recipients');
 
         $filters = $request->validate([
@@ -104,7 +104,7 @@ class AlertController extends Controller
 
         if ($this->isApiRequest($request)) {
             return response()->json([
-                'data' => AlertResource::make($alert->load(['source', 'riskAreas', 'creator', 'approver'])),
+                'data' => AlertResource::make($alert->load(['source', 'riskAreas', 'creator', 'approver', 'fireRiskPrediction'])),
             ], 201);
         }
 
@@ -113,7 +113,7 @@ class AlertController extends Controller
 
     public function show(Alert $alert): AlertResource
     {
-        $alert->load(['source', 'riskAreas', 'creator', 'approver', 'supersedes']);
+        $alert->load(['source', 'riskAreas', 'creator', 'approver', 'supersedes', 'fireRiskPrediction']);
 
         return AlertResource::make($alert);
     }
@@ -185,7 +185,7 @@ class AlertController extends Controller
         if ($this->isApiRequest($request)) {
             return response()->json([
                 'message' => 'Alert revised and returned to draft for approval.',
-                'data' => AlertResource::make($alert->fresh()->load(['source', 'riskAreas', 'creator', 'approver'])),
+                'data' => AlertResource::make($alert->fresh()->load(['source', 'riskAreas', 'creator', 'approver', 'fireRiskPrediction'])),
             ]);
         }
 
@@ -238,7 +238,7 @@ class AlertController extends Controller
         if ($this->isApiRequest($request)) {
             return response()->json([
                 'message' => 'Alert approved. An authorized operator can now publish it to all residents.',
-                'data' => AlertResource::make($alert->fresh()->load(['source', 'riskAreas', 'creator', 'approver'])),
+                'data' => AlertResource::make($alert->fresh()->load(['source', 'riskAreas', 'creator', 'approver', 'fireRiskPrediction'])),
             ]);
         }
 
@@ -340,7 +340,7 @@ class AlertController extends Controller
         if ($this->isApiRequest($request)) {
             return response()->json([
                 'message' => $message,
-                'data' => AlertResource::make($alert->fresh()->load(['source', 'riskAreas', 'creator', 'approver'])),
+                'data' => AlertResource::make($alert->fresh()->load(['source', 'riskAreas', 'creator', 'approver', 'fireRiskPrediction'])),
             ]);
         }
 
@@ -383,7 +383,7 @@ class AlertController extends Controller
         if ($this->isApiRequest($request)) {
             return response()->json([
                 'message' => 'A replacement draft was created. The current alert remains active until the replacement is published.',
-                'data' => AlertResource::make($revision->load(['source', 'riskAreas', 'creator', 'approver'])),
+                'data' => AlertResource::make($revision->load(['source', 'riskAreas', 'creator', 'approver', 'fireRiskPrediction'])),
             ], 201);
         }
 
@@ -432,7 +432,7 @@ class AlertController extends Controller
         $recipients = AlertRecipient::query()
             ->where('user_id', $request->user()->id)
             ->whereHas('alert', fn (Builder $query) => $query->currentlyActive())
-            ->with('alert.source', 'alert.riskAreas')
+            ->with('alert.source', 'alert.riskAreas', 'alert.fireRiskPrediction')
             ->orderByDesc('delivered_at')
             ->paginate(12);
 
@@ -473,7 +473,7 @@ class AlertController extends Controller
             ->where('alert_id', $alert->id)
             ->where('user_id', $request->user()->id)
             ->whereHas('alert', fn (Builder $query) => $query->currentlyActive())
-            ->with('alert.source', 'alert.riskAreas')
+            ->with('alert.source', 'alert.riskAreas', 'alert.fireRiskPrediction')
             ->firstOrFail();
 
         if ($recipient->read_at === null) {
