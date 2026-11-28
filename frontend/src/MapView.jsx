@@ -95,7 +95,7 @@ function incidentPopupContent(incident) {
     return root;
 }
 
-function predictionPopupContent(prediction) {
+function predictionPopupContent(prediction, canCreateAdvisories) {
     const root = document.createElement('div');
     const title = document.createElement('strong');
     const location = document.createElement('div');
@@ -108,7 +108,7 @@ function predictionPopupContent(prediction) {
 
     title.textContent = 'Staff 24-hour fire-risk estimate';
     location.textContent = prediction.barangay;
-    score.textContent = `Model score: ${scorePercent.toFixed(1)} / 100 (not a calibrated probability)`;
+    score.textContent = `Estimated possibility of fire: ${scorePercent.toFixed(1)} / 100`;
     threshold.textContent = `Reference threshold: ${thresholdPercent.toFixed(0)} / 100`;
     if (prediction.created_at) {
         calculated.textContent = `Calculated: ${new Date(prediction.created_at).toLocaleString()}`;
@@ -118,6 +118,13 @@ function predictionPopupContent(prediction) {
     root.append(title, location, score, threshold);
     if (prediction.created_at) root.append(calculated);
     root.append(note);
+    if (canCreateAdvisories && prediction.barangay) {
+        const advisoryLink = document.createElement('a');
+        advisoryLink.className = 'text-link';
+        advisoryLink.href = `/alerts/create?type=fire&barangay=${encodeURIComponent(prediction.barangay)}`;
+        advisoryLink.textContent = `Prepare fire advisory for ${prediction.barangay}`;
+        root.append(advisoryLink);
+    }
 
     return root;
 }
@@ -160,6 +167,7 @@ export default function MapView({
     incidents = emptyIncidents,
     prediction,
     predictions = emptyPredictions,
+    canCreateAdvisories = false,
     boundary,
     editable = false,
     focusLocation,
@@ -433,14 +441,14 @@ export default function MapView({
                     });
                     const marker = L.marker([latitude, longitude], {
                         icon,
-                        title: `Fire-risk model score ${scorePercent.toFixed(1)} out of 100 for ${estimate.barangay}; not a calibrated probability`,
+                        title: `Estimated possibility of fire: ${scorePercent.toFixed(1)} out of 100 for ${estimate.barangay}`,
                         zIndexOffset: 500,
                     }).addTo(map);
                     marker.bindTooltip(
-                        `Score ${scorePercent.toFixed(1)} / 100 · not a probability`,
+                        `Fire possibility ${scorePercent.toFixed(1)} / 100`,
                         { permanent: true, direction: 'top', offset: [0, -12] },
                     );
-                    marker.bindPopup(predictionPopupContent(estimate));
+                    marker.bindPopup(predictionPopupContent(estimate, canCreateAdvisories));
                     predictionMarkers.push(marker);
                 }
             }
@@ -465,7 +473,7 @@ export default function MapView({
             delete element.__focusLocation;
             delete element.__clearFocusLocation;
         };
-    }, [areas, editable, incidents, prediction, predictions]);
+    }, [areas, canCreateAdvisories, editable, incidents, prediction, predictions]);
 
     useEffect(() => {
         if (focusLocation) {

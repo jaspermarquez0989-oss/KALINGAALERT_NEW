@@ -39,7 +39,7 @@ function monthLabel(month) {
     return new Date(2020, month - 1, 1).toLocaleString('en', { month: 'long' });
 }
 
-export default function FireRiskPredictionPage() {
+export default function FireRiskPredictionPage({ user }) {
     const [modelInfo, setModelInfo] = useState(null);
     const [form, setForm] = useState(initialForm);
     const [result, setResult] = useState(null);
@@ -209,17 +209,17 @@ export default function FireRiskPredictionPage() {
                         </div>
                         <div className="fire-risk-score">
                             <div className="fire-risk-score-heading">
-                                <span>Model score <small>Not a calibrated probability</small></span>
+                                <span>Possibility of fire <small>Model estimate</small></span>
                                 <strong>{score.toFixed(1)} / 100</strong>
                             </div>
                             <div
                                 className="fire-risk-score-track"
                                 role="meter"
-                                aria-label="Fire-risk model score"
+                                aria-label="Fire possibility estimate"
                                 aria-valuemin="0"
                                 aria-valuemax="100"
                                 aria-valuenow={score}
-                                aria-valuetext={`${score.toFixed(1)} out of 100 model-score points; reference threshold ${referenceThreshold.toFixed(0)}; not a calibrated probability`}
+                                aria-valuetext={`${score.toFixed(1)} out of 100 fire possibility estimate points; reference threshold ${referenceThreshold.toFixed(0)}`}
                                 style={{
                                     background: `linear-gradient(90deg, #f3e8cc 0%, #f3e8cc ${referenceThreshold}%, #f4d9d3 ${referenceThreshold}%, #f4d9d3 100%)`,
                                 }}
@@ -241,11 +241,14 @@ export default function FireRiskPredictionPage() {
                     </div>
                     <Notice tone="info">{result.disclaimer}</Notice>
                     <p className="muted">
-                        The map pin marks the selected barangay’s mapped reference point only; it does not identify an exact fire location. The score is not a calibrated probability.
+                        The map pin marks the selected barangay’s mapped reference point only; it does not identify an exact fire location. The score is a model-based indication of possible fire conditions, not a confirmed fire.
                     </p>
                     {mapError && <Notice>{mapError}</Notice>}
                     {predictionLocation && (
-                        <MapView prediction={predictionLocation} />
+                        <MapView
+                            prediction={predictionLocation}
+                            canCreateAdvisories={['system_admin', 'mdrrmo', 'alert_operator'].includes(user?.role)}
+                        />
                     )}
                 </Panel>
             )}

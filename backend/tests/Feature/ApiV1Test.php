@@ -310,6 +310,55 @@ class ApiV1Test extends TestCase
         ]);
     }
 
+    public function test_fire_advisories_require_a_verified_fire_source_matching_the_selected_type(): void
+    {
+        $creator = $this->makeUser(UserRole::AlertOperator->value);
+        $sourceAuthor = $this->makeUser(UserRole::BfpOfficer->value);
+        $verifier = $this->makeUser(UserRole::MdrrmoPersonnel->value);
+        $source = HazardSource::create([
+            'source_type' => 'fire',
+            'organization' => 'Bureau of Fire Protection (BFP)',
+            'title' => 'Verified BFP fire information',
+            'details' => 'Official fire information for advisory testing.',
+            'issued_at' => now()->subMinute(),
+            'verification_status' => 'verified',
+            'created_by' => $sourceAuthor->id,
+            'verified_by' => $verifier->id,
+            'verified_at' => now(),
+        ]);
+        $area = $this->makeRiskArea($verifier);
+        $token = $this->tokenFor($creator);
+        $payload = [
+            'hazard_source_id' => $source->id,
+            'hazard_type' => 'fire',
+            'barangay' => $area->barangay,
+            'title' => 'Barangay fire advisory',
+            'message' => 'Official fire information for the selected barangay.',
+            'safety_instructions' => 'Follow BFP and local authority instructions.',
+            'severity' => 'warning',
+            'starts_at' => now()->toIso8601String(),
+            'risk_area_ids' => [$area->id],
+        ];
+
+        $this->withToken($token)
+            ->postJson('/api/v1/alerts', [...$payload, 'hazard_type' => 'weather'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['hazard_source_id']);
+
+        $this->clearJwtRequestState();
+        $this->withToken($token)
+            ->postJson('/api/v1/alerts', [...$payload, 'barangay' => 'Different Barangay'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['risk_area_ids.0']);
+
+        $this->clearJwtRequestState();
+        $this->withToken($token)
+            ->postJson('/api/v1/alerts', $payload)
+            ->assertCreated()
+            ->assertJsonPath('data.hazard_source.source_type', 'fire')
+            ->assertJsonPath('data.status', Alert::STATUS_DRAFT);
+    }
+
     public function test_only_system_administrators_and_mdrrmo_can_publish_a_draft_immediately(): void
     {
         $creator = $this->makeUser(UserRole::AlertOperator->value, ['email' => 'operator@example.com']);

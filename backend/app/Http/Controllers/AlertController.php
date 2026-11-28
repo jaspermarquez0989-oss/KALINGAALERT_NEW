@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\HazardType;
 use App\Enums\UserRole;
 use App\Http\Resources\Api\V1\AlertRecipientResource;
 use App\Http\Resources\Api\V1\AlertResource;
@@ -450,11 +451,22 @@ class AlertController extends Controller
      */
     private function validatedAlert(Request $request): array
     {
+        $sourceRule = Rule::exists('hazard_sources', 'id')->where('verification_status', 'verified');
+        if ($request->filled('hazard_type')) {
+            $sourceRule->where('source_type', $request->input('hazard_type'));
+        }
+        $riskAreaRule = Rule::exists('risk_areas', 'id')->where('is_active', true);
+        if ($request->input('hazard_type') === HazardType::Fire->value && $request->filled('barangay')) {
+            $riskAreaRule->where('barangay', $request->input('barangay'));
+        }
+
         $validated = $request->validate([
             'hazard_source_id' => [
                 'required',
-                Rule::exists('hazard_sources', 'id')->where('verification_status', 'verified'),
+                $sourceRule,
             ],
+            'hazard_type' => ['sometimes', Rule::in([HazardType::Weather->value, HazardType::Fire->value])],
+            'barangay' => ['required_if:hazard_type,fire', 'nullable', 'string', 'max:120'],
             'title' => ['required', 'string', 'max:180'],
             'message' => ['required', 'string', 'max:5000'],
             'safety_instructions' => ['required', 'string', 'max:5000'],
@@ -467,7 +479,7 @@ class AlertController extends Controller
                 'required',
                 'integer',
                 'distinct',
-                Rule::exists('risk_areas', 'id')->where('is_active', true),
+                $riskAreaRule,
             ],
         ]);
 
