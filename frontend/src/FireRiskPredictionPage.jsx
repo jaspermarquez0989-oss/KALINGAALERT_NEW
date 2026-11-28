@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
+import { lookupBongabongBarangay } from './data/lookup-bongabong-barangay.js';
+import MapView from './MapView.jsx';
 import {
     Field,
     FormActions,
@@ -44,6 +46,9 @@ export default function FireRiskPredictionPage() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
+    const [mapError, setMapError] = useState('');
+    const [predictionLocation, setPredictionLocation] = useState(null);
+    const predictionRequestId = useRef(0);
     const score = result ? Math.min(100, Math.max(0, result.score_percent)) : 0;
     const referenceThreshold = result ? Math.min(100, Math.max(0, result.threshold * 100)) : 50;
 
@@ -63,16 +68,30 @@ export default function FireRiskPredictionPage() {
     }, []);
 
     function updateField(name, value) {
+        predictionRequestId.current += 1;
         setForm((current) => ({ ...current, [name]: value }));
         setResult(null);
+        setPredictionLocation(null);
+        setMapError('');
     }
 
     async function submitPrediction(event) {
         event.preventDefault();
+        const requestId = ++predictionRequestId.current;
         setError('');
+        setMapError('');
         setResult(null);
+        setPredictionLocation(null);
         setSaving(true);
         try {
+            let coordinates = null;
+            try {
+                coordinates = await lookupBongabongBarangay(form.barangay);
+            } catch (locationError) {
+                if (requestId === predictionRequestId.current) setMapError(locationError.message);
+            }
+            if (requestId !== predictionRequestId.current) return;
+
             const body = Object.fromEntries(
                 Object.entries(form).map(([name, value]) => [
                     name,
@@ -81,10 +100,24 @@ export default function FireRiskPredictionPage() {
                         : Number(value),
                 ]),
             );
+            if (coordinates) {
+                body.latitude = coordinates.latitude;
+                body.longitude = coordinates.longitude;
+            }
             const response = await api('/fire-risk/predict', { method: 'POST', body });
+            if (requestId !== predictionRequestId.current) return;
             setResult(response.data);
+            if (coordinates) {
+                setPredictionLocation({
+                    ...coordinates,
+                    barangay: form.barangay,
+                    scorePercent: response.data.score_percent,
+                    thresholdPercent: response.data.threshold * 100,
+                    thresholdMet: response.data.threshold_met,
+                });
+            }
         } catch (requestError) {
-            setError(requestError.message);
+            if (requestId === predictionRequestId.current) setError(requestError.message);
         } finally {
             setSaving(false);
         }
@@ -207,6 +240,13 @@ export default function FireRiskPredictionPage() {
                         </div>
                     </div>
                     <Notice tone="info">{result.disclaimer}</Notice>
+                    <p className="muted">
+                        The map pin marks the selected barangay’s mapped reference point only; it does not identify an exact fire location. The score is not a calibrated probability.
+                    </p>
+                    {mapError && <Notice>{mapError}</Notice>}
+                    {predictionLocation && (
+                        <MapView prediction={predictionLocation} />
+                    )}
                 </Panel>
             )}
         </>

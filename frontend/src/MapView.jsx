@@ -4,6 +4,7 @@ import { heatPaletteForScore } from './intensity.js';
 
 const emptyAreas = [];
 const emptyIncidents = [];
+const emptyPredictions = [];
 
 function popupContent(area) {
     const root = document.createElement('div');
@@ -94,6 +95,33 @@ function incidentPopupContent(incident) {
     return root;
 }
 
+function predictionPopupContent(prediction) {
+    const root = document.createElement('div');
+    const title = document.createElement('strong');
+    const location = document.createElement('div');
+    const score = document.createElement('div');
+    const threshold = document.createElement('div');
+    const calculated = document.createElement('div');
+    const note = document.createElement('p');
+    const scorePercent = Number(prediction.scorePercent ?? prediction.score_percent);
+    const thresholdPercent = Number(prediction.thresholdPercent ?? Number(prediction.threshold) * 100);
+
+    title.textContent = 'Staff 24-hour fire-risk estimate';
+    location.textContent = prediction.barangay;
+    score.textContent = `Model score: ${scorePercent.toFixed(1)} / 100 (not a calibrated probability)`;
+    threshold.textContent = `Reference threshold: ${thresholdPercent.toFixed(0)} / 100`;
+    if (prediction.created_at) {
+        calculated.textContent = `Calculated: ${new Date(prediction.created_at).toLocaleString()}`;
+    }
+    note.className = 'map-incident-notice';
+    note.textContent = 'Barangay reference point only; this does not identify an exact fire location.';
+    root.append(title, location, score, threshold);
+    if (prediction.created_at) root.append(calculated);
+    root.append(note);
+
+    return root;
+}
+
 const severityScores = { advisory: 0.3, watch: 0.55, warning: 0.78, emergency: 1 };
 
 function heatForArea(area) {
@@ -130,6 +158,8 @@ function areaCenter(area, ring) {
 export default function MapView({
     areas = emptyAreas,
     incidents = emptyIncidents,
+    prediction,
+    predictions = emptyPredictions,
     boundary,
     editable = false,
     focusLocation,
@@ -327,6 +357,8 @@ export default function MapView({
         } else {
             const polygons = [];
             const incidentMarkers = [];
+            const predictionMarkers = [];
+            const visiblePredictions = prediction ? [prediction] : predictions;
 
             for (const area of areas) {
                 const ring = area.boundary?.coordinates?.[0] ?? [];
@@ -383,9 +415,42 @@ export default function MapView({
                 incidentMarkers.push(marker);
             }
 
-            const visibleLayers = [...polygons, ...incidentMarkers];
+            for (const estimate of visiblePredictions) {
+                const latitude = Number(estimate.latitude);
+                const longitude = Number(estimate.longitude);
+                const scorePercent = Number(estimate.scorePercent ?? estimate.score_percent);
+                if (Number.isFinite(latitude) && Number.isFinite(longitude)
+                    && Number.isFinite(scorePercent)
+                    && latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180) {
+                    const markerClass = estimate.thresholdMet ?? estimate.threshold_met
+                        ? 'fire-risk-prediction-marker fire-risk-prediction-marker-raised'
+                        : 'fire-risk-prediction-marker';
+                    const icon = L.divIcon({
+                        className: markerClass,
+                        html: '<span aria-hidden="true"></span>',
+                        iconSize: [30, 30],
+                        iconAnchor: [15, 15],
+                    });
+                    const marker = L.marker([latitude, longitude], {
+                        icon,
+                        title: `Fire-risk model score ${scorePercent.toFixed(1)} out of 100 for ${estimate.barangay}; not a calibrated probability`,
+                        zIndexOffset: 500,
+                    }).addTo(map);
+                    marker.bindTooltip(
+                        `Score ${scorePercent.toFixed(1)} / 100 · not a probability`,
+                        { permanent: true, direction: 'top', offset: [0, -12] },
+                    );
+                    marker.bindPopup(predictionPopupContent(estimate));
+                    predictionMarkers.push(marker);
+                }
+            }
+
+            const visibleLayers = [...polygons, ...incidentMarkers, ...predictionMarkers];
             if (visibleLayers.length) {
-                map.fitBounds(L.featureGroup(visibleLayers).getBounds().pad(0.2), { padding: [25, 25], maxZoom: 14 });
+                map.fitBounds(L.featureGroup(visibleLayers).getBounds().pad(0.2), {
+                    padding: [25, 25],
+                    maxZoom: 14,
+                });
             }
         }
 
@@ -400,7 +465,7 @@ export default function MapView({
             delete element.__focusLocation;
             delete element.__clearFocusLocation;
         };
-    }, [areas, editable, incidents]);
+    }, [areas, editable, incidents, prediction, predictions]);
 
     useEffect(() => {
         if (focusLocation) {
@@ -435,7 +500,7 @@ export default function MapView({
                     </div>
                 </div>
             )}
-            {!editable && (
+            {!editable && !prediction && predictions.length === 0 && (
                 <div className="heatmap-legend" aria-label="Map legend">
                     <span>Advisory level</span>
                     {[1, 2, 3, 4, 5].map((level) => (

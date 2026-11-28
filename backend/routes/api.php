@@ -64,6 +64,10 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
                 ->name('review');
         });
 
+        Route::middleware('role:system_admin,mdrrmo,bfp_officer,alert_operator')
+            ->get('/fire-risk/predictions', [FireRiskPredictionController::class, 'index'])
+            ->name('fire-risk.predictions.index');
+
         Route::middleware('role:system_admin,mdrrmo,bfp_officer')->prefix('/fire-risk')->name('fire-risk.')->group(function (): void {
             Route::get('/model-info', [FireRiskPredictionController::class, 'info'])
                 ->middleware('throttle:30,1')

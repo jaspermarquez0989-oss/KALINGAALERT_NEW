@@ -281,6 +281,10 @@ td select { min-width: 150px; }
 .leaflet-marker-icon.fire-incident-marker { border: 0; background: transparent; }
 .fire-incident-marker span { position: relative; display: block; width: 14px; height: 14px; margin: 5px; border: 2px solid #fff; border-radius: 50%; background: #c83d32; box-shadow: 0 1px 5px rgba(0,0,0,.45); }
 .fire-incident-marker span::after { position: absolute; inset: -7px; border: 2px solid rgba(200,61,50,.72); border-radius: 50%; content: ""; animation: fire-incident-pulse 1.8s ease-out infinite; }
+.leaflet-marker-icon.fire-risk-prediction-marker { border: 0; background: transparent; }
+.fire-risk-prediction-marker span { position: relative; display: block; width: 20px; height: 20px; margin: 5px; border: 3px solid #fff; border-radius: 50% 50% 50% 0; background: #d18428; box-shadow: 0 1px 6px rgba(0,0,0,.5); transform: rotate(-45deg); }
+.fire-risk-prediction-marker span::after { position: absolute; inset: 4px; border-radius: 50%; background: #fff; content: ""; }
+.fire-risk-prediction-marker-raised span { background: #bd4737; }
 @keyframes fire-incident-pulse { 0% { transform: scale(.45); opacity: .9; } 100% { transform: scale(1.45); opacity: 0; } }
 .fire-incident-legend { display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; color: #43564c; }
 .fire-incident-legend i { width: 10px; height: 10px; border: 2px solid #fff; border-radius: 50%; background: #c83d32; box-shadow: 0 0 0 1px #c83d32; }

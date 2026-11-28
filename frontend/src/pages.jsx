@@ -268,13 +268,13 @@ export function DashboardPage({ user }) {
                         });
                     }
                 } else {
-                    const requests = [
+                    const canViewAlerts = ['system_admin', 'mdrrmo', 'alert_operator'].includes(user.role);
+                    const [areaResponse, sourceResponse, predictionResponse, alertResponse] = await Promise.all([
                         api('/risk-areas?per_page=100'),
                         api('/hazard-sources?per_page=100'),
-                    ];
-                    const canViewAlerts = ['system_admin', 'mdrrmo', 'alert_operator'].includes(user.role);
-                    if (canViewAlerts) requests.push(api('/alerts?per_page=100'));
-                    const [areaResponse, sourceResponse, alertResponse] = await Promise.all(requests);
+                        api('/fire-risk/predictions'),
+                        canViewAlerts ? api('/alerts?per_page=100') : Promise.resolve(null),
+                    ]);
                     const alerts = alertResponse?.data ?? [];
                     const areas = (areaResponse.data ?? []).map((area) => ({
                         ...area,
@@ -289,7 +289,12 @@ export function DashboardPage({ user }) {
                                 safety_instructions: alert.safety_instructions,
                             })),
                     }));
-                    if (isCurrent) setData({ areas, alerts, sources: sourceResponse.data ?? [] });
+                    if (isCurrent) setData({
+                        areas,
+                        alerts,
+                        sources: sourceResponse.data ?? [],
+                        predictions: predictionResponse.data ?? [],
+                    });
                 }
                 if (isCurrent) setError('');
             } catch (requestError) {
@@ -415,11 +420,16 @@ export function DashboardPage({ user }) {
                     </Panel>
                 )}
             </div>
-            <Panel title={isResident ? 'Community risk areas' : 'Mapped coverage'} className="map-panel">
-                {data.areas.length || isResident
-                    ? <MapView areas={mapAreas.filter((area) => area.is_active)} incidents={isResident ? data.incidents : undefined} />
+            <Panel title={isResident ? 'Community risk areas' : 'Mapped coverage and staff estimates'} className="map-panel">
+                {data.areas.length || isResident || data.predictions?.length
+                    ? <MapView
+                        areas={mapAreas.filter((area) => area.is_active)}
+                        incidents={isResident ? data.incidents : undefined}
+                        predictions={isResident ? undefined : data.predictions}
+                    />
                     : <EmptyState title="No active mapped areas" />}
                 {isResident && <p className="muted">This map shows active public risk areas and verified past fire incidents across Bongabong. Past incident pins are historical records, not current emergency alerts. Your exact home location stays private.</p>}
+                {!isResident && <p className="muted">Recent staff fire-risk estimates appear for 24 hours. Their pins mark barangay reference points and scores, not confirmed fires or exact locations.</p>}
                 {isResident && data.areas.length === 0 && <Notice tone="info">No active risk areas are currently mapped.</Notice>}
             </Panel>
             <p className="disclaimer"><strong>Safety notice</strong> Historical fire records are not live incident reports or fire predictions. KalingaAlert does not dispatch rescue. Follow official warnings and local emergency instructions.</p>

@@ -884,8 +884,11 @@ class ApiV1Test extends TestCase
     public function test_authorized_staff_can_request_a_fire_occurrence_decision_support_estimate(): void
     {
         $manager = $this->makeUser(UserRole::MdrrmoPersonnel->value);
+        $bfpOfficer = $this->makeUser(UserRole::BfpOfficer->value);
         $resident = $this->makeUser(UserRole::CommunityResident->value);
         $managerToken = $this->tokenFor($manager);
+        $this->clearJwtRequestState();
+        $bfpToken = $this->tokenFor($bfpOfficer);
         $this->clearJwtRequestState();
         $residentToken = $this->tokenFor($resident);
         $this->clearJwtRequestState();
@@ -920,6 +923,8 @@ class ApiV1Test extends TestCase
             'barangay' => 'Polusahi',
             'land_use_zone' => 'Grassland_Agroforestry',
             'season' => 'Cool_Amihan_Transition',
+            'latitude' => 12.73,
+            'longitude' => 121.36,
         ];
 
         $this->withToken($managerToken)
@@ -930,6 +935,14 @@ class ApiV1Test extends TestCase
             ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['temperature_c', 'barangay']);
+
+        $this->withToken($managerToken)
+            ->postJson('/api/v1/fire-risk/predict', [
+                ...$input,
+                'latitude' => null,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('latitude');
 
         $prediction = $this->withToken($managerToken)
             ->postJson('/api/v1/fire-risk/predict', $input)
@@ -947,9 +960,36 @@ class ApiV1Test extends TestCase
             'action' => 'fire_risk.predicted',
         ]);
 
+        $this->assertDatabaseHas('fire_risk_predictions', [
+            'barangay' => 'Polusahi',
+            'latitude' => 12.73,
+            'longitude' => 121.36,
+            'score_percent' => $prediction->json('data.score_percent'),
+            'model_version' => 'mdrrmo-bongabong-barangay-500m-24h-v4',
+            'created_by' => $manager->id,
+        ]);
+
+        $this->clearJwtRequestState();
+        $this->withToken($managerToken)
+            ->getJson('/api/v1/fire-risk/predictions')
+            ->assertOk()
+            ->assertJsonPath('data.0.barangay', 'Polusahi')
+            ->assertJsonPath('data.0.score_percent', $prediction->json('data.score_percent'))
+            ->assertJsonPath('meta.window_hours', 24);
+
+        $this->clearJwtRequestState();
+        $this->withToken($bfpToken)
+            ->getJson('/api/v1/fire-risk/predictions')
+            ->assertOk()
+            ->assertJsonPath('data.0.barangay', 'Polusahi');
+
         $this->clearJwtRequestState();
         $this->withToken($residentToken)
             ->getJson('/api/v1/fire-risk/model-info')
+            ->assertForbidden();
+
+        $this->withToken($residentToken)
+            ->getJson('/api/v1/fire-risk/predictions')
             ->assertForbidden();
     }
 
