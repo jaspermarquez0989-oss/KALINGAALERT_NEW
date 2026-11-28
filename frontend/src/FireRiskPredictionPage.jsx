@@ -41,10 +41,8 @@ export default function FireRiskPredictionPage() {
     const [modelInfo, setModelInfo] = useState(null);
     const [form, setForm] = useState(initialForm);
     const [result, setResult] = useState(null);
-    const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
-    const validationFolds = modelInfo?.validation?.folds ?? [];
     const score = result ? Math.min(100, Math.max(0, result.score_percent)) : 0;
     const referenceThreshold = result ? Math.min(100, Math.max(0, result.threshold * 100)) : 50;
 
@@ -56,9 +54,6 @@ export default function FireRiskPredictionPage() {
             })
             .catch((requestError) => {
                 if (isCurrent) setError(requestError.message);
-            })
-            .finally(() => {
-                if (isCurrent) setLoading(false);
             });
         return () => { isCurrent = false; };
     }, []);
@@ -102,62 +97,6 @@ export default function FireRiskPredictionPage() {
                 Staff decision support only. Enter verified readings before the forecast period; no live weather feed or sensor is connected. This score does not create an alert. A below-threshold result is not an all-clear—continue to follow official monitoring and response procedures.
             </Notice>
             {error && <Notice>{error}</Notice>}
-            <Panel title="Model and historical validation">
-                {loading ? <p className="muted">Loading model information…</p> : modelInfo && (
-                    <>
-                        <p className="muted">
-                            Version {modelInfo.model_version} · {modelInfo.training_rows} training rows ·
-                            {' '}Training period {modelInfo.training_date_range?.[0] ?? 'not available'} to {modelInfo.training_date_range?.[1] ?? 'not available'}.
-                            {' '}Dataset timing, location, and labels were verified by MDRRMO staff, as reported by the user.
-                        </p>
-                        <p className="muted">{modelInfo.outcome_scope}</p>
-                        <p className="muted">
-                            Forward-year validation across {modelInfo.validation.summary.test_rows} rows: {(modelInfo.validation.summary.accuracy * 100).toFixed(1)}% accuracy, {(modelInfo.validation.summary.recall * 100).toFixed(1)}% fire recall, mean yearly ROC AUC {modelInfo.validation.summary.mean_yearly_roc_auc.toFixed(3)}. Majority-class baseline accuracy: {(modelInfo.baseline_comparison.majority_class_accuracy * 100).toFixed(1)}%.
-                        </p>
-                        <p className="muted">
-                            Selected regularization: {modelInfo.training_config.l2_strength} (tuned on {modelInfo.tuning.years.join(', ')}); held-out probability quality Brier score {modelInfo.validation.summary.mean_yearly_brier_score.toFixed(3)}. This score is not calibrated for decision thresholds.
-                        </p>
-                        <p className="muted">
-                            Historical forward-year validation at the 50% threshold:
-                        </p>
-                        <div className="table-scroll">
-                            <table>
-                                <thead><tr><th>Test year</th><th>Rows</th><th>Fire recall</th><th>Missed fires</th></tr></thead>
-                                <tbody>
-                                    {validationFolds.map((fold) => (
-                                        <tr key={fold.year}>
-                                            <td>{fold.year}<small>{fold.test_date_range?.[0]} – {fold.test_date_range?.[1]}</small></td>
-                                            <td>{fold.test_rows}</td>
-                                            <td>{(fold.metrics.recall * 100).toFixed(1)}%</td>
-                                            <td>{fold.metrics.confusion_matrix.false_negative}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                        <p className="muted">Threshold trade-offs across all held-out years:</p>
-                        <div className="table-scroll">
-                            <table>
-                                <thead><tr><th>Score threshold</th><th>Fire recall</th><th>Precision</th><th>False positives</th><th>Missed fires</th></tr></thead>
-                                <tbody>
-                                    {(modelInfo.validation?.summary?.threshold_sweep ?? []).map((item) => (
-                                        <tr key={item.threshold}>
-                                            <td>{(item.threshold * 100).toFixed(0)}%</td>
-                                            <td>{(item.recall * 100).toFixed(1)}%</td>
-                                            <td>{(item.precision * 100).toFixed(1)}%</td>
-                                            <td>{item.false_positives}</td>
-                                            <td>{item.false_negatives}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                        <p className="field-hint">
-                            Lower thresholds catch more fires but also create more false positives. Thresholds shown are trade-offs, not approved alert levels. Validation covers Bongabong history only.
-                        </p>
-                    </>
-                )}
-            </Panel>
             <Panel title="Enter conditions before the next 24 hours" className="fire-risk-form-panel">
                 <p className="muted">
                     Select a barangay and provide its pre-forecast observations. The target is verified fire occurrence within 500 meters of a recorded observation point in that barangay during the next 24 hours. The model does not distinguish locations within a barangay and requires every field; missing data is not automatically filled in.
