@@ -118,13 +118,30 @@ function predictionPopupContent(prediction, canCreateAdvisories) {
     root.append(title, location, score, threshold);
     if (prediction.created_at) root.append(calculated);
     root.append(note);
-    if (canCreateAdvisories && prediction.barangay) {
+    if (canCreateAdvisories && prediction.id && prediction.barangay) {
         const advisoryLink = document.createElement('a');
         advisoryLink.className = 'text-link';
-        advisoryLink.href = `/alerts/create?type=fire&barangay=${encodeURIComponent(prediction.barangay)}`;
+        advisoryLink.href = `/alerts/create?type=fire&prediction_id=${encodeURIComponent(prediction.id)}`;
         advisoryLink.textContent = `Prepare fire advisory for ${prediction.barangay}`;
         root.append(advisoryLink);
     }
+
+    return root;
+}
+
+function fireAdvisoryPopupContent(advisory) {
+    const root = document.createElement('div');
+    const title = document.createElement('strong');
+    const location = document.createElement('div');
+    const severity = document.createElement('div');
+    const note = document.createElement('p');
+
+    title.textContent = advisory.title ?? 'Published fire advisory';
+    location.textContent = `Affected barangay: ${advisory.affected_barangay}`;
+    severity.textContent = `Severity: ${advisory.severity}`;
+    note.className = 'map-incident-notice';
+    note.textContent = 'This pin marks the barangay reference point, not an exact fire location.';
+    root.append(title, location, severity, note);
 
     return root;
 }
@@ -167,6 +184,7 @@ export default function MapView({
     incidents = emptyIncidents,
     prediction,
     predictions = emptyPredictions,
+    fireAdvisories = emptyPredictions,
     canCreateAdvisories = false,
     boundary,
     editable = false,
@@ -366,6 +384,7 @@ export default function MapView({
             const polygons = [];
             const incidentMarkers = [];
             const predictionMarkers = [];
+            const fireAdvisoryMarkers = [];
             const visiblePredictions = prediction ? [prediction] : predictions;
 
             for (const area of areas) {
@@ -453,7 +472,34 @@ export default function MapView({
                 }
             }
 
-            const visibleLayers = [...polygons, ...incidentMarkers, ...predictionMarkers];
+            for (const advisory of fireAdvisories) {
+                const latitude = Number(advisory.affected_latitude);
+                const longitude = Number(advisory.affected_longitude);
+                if (!Number.isFinite(latitude) || !Number.isFinite(longitude)
+                    || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+                    continue;
+                }
+
+                const icon = L.divIcon({
+                    className: 'fire-risk-prediction-marker fire-risk-prediction-marker-raised',
+                    html: '<span aria-hidden="true"></span>',
+                    iconSize: [30, 30],
+                    iconAnchor: [15, 15],
+                });
+                const marker = L.marker([latitude, longitude], {
+                    icon,
+                    title: `Published fire advisory for ${advisory.affected_barangay}`,
+                    zIndexOffset: 600,
+                }).addTo(map);
+                marker.bindTooltip(
+                    `Fire advisory · ${advisory.affected_barangay}`,
+                    { permanent: true, direction: 'top', offset: [0, -12] },
+                );
+                marker.bindPopup(fireAdvisoryPopupContent(advisory));
+                fireAdvisoryMarkers.push(marker);
+            }
+
+            const visibleLayers = [...polygons, ...incidentMarkers, ...predictionMarkers, ...fireAdvisoryMarkers];
             if (visibleLayers.length) {
                 map.fitBounds(L.featureGroup(visibleLayers).getBounds().pad(0.2), {
                     padding: [25, 25],
@@ -473,7 +519,7 @@ export default function MapView({
             delete element.__focusLocation;
             delete element.__clearFocusLocation;
         };
-    }, [areas, canCreateAdvisories, editable, incidents, prediction, predictions]);
+    }, [areas, canCreateAdvisories, editable, fireAdvisories, incidents, prediction, predictions]);
 
     useEffect(() => {
         if (focusLocation) {

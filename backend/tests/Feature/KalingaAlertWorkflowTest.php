@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\UserRole;
 use App\Models\Alert;
+use App\Models\FireRiskPrediction;
 use App\Models\HazardSource;
 use App\Models\RiskArea;
 use App\Models\User;
@@ -128,7 +129,6 @@ class KalingaAlertWorkflowTest extends TestCase
         $operator = $this->makeUser(UserRole::AlertOperator->value);
         $approver = $this->makeUser(UserRole::MdrrmoPersonnel->value);
         $bfpOfficer = $this->makeUser(UserRole::BfpOfficer->value);
-        $area = $this->createRiskArea($approver);
         $source = HazardSource::create([
             'source_type' => 'fire',
             'organization' => 'Bureau of Fire Protection (BFP)',
@@ -140,6 +140,17 @@ class KalingaAlertWorkflowTest extends TestCase
             'created_by' => $bfpOfficer->id,
             'verified_by' => $approver->id,
             'verified_at' => now()->subMinutes(10),
+        ]);
+        $prediction = FireRiskPrediction::create([
+            'barangay' => 'Bongabong',
+            'latitude' => 12.73,
+            'longitude' => 121.36,
+            'score_percent' => 68.5,
+            'threshold' => 0.5,
+            'threshold_met' => true,
+            'model_version' => 'test',
+            'prediction_radius_meters' => 500,
+            'created_by' => $operator->id,
         ]);
         $barangayResident = $this->makeUser(UserRole::CommunityResident->value, [
             'barangay' => 'bongabong',
@@ -160,16 +171,20 @@ class KalingaAlertWorkflowTest extends TestCase
 
         $this->actingAs($operator)->post(route('alerts.store'), [
             'hazard_source_id' => $source->id,
+            'hazard_type' => 'fire',
+            'fire_risk_prediction_id' => $prediction->id,
             'title' => 'Verified fire advisory',
             'message' => 'An official fire advisory for the selected coverage.',
             'safety_instructions' => 'Follow instructions issued by local authorities.',
             'severity' => 'warning',
             'starts_at' => now()->format('Y-m-d H:i:s'),
             'ends_at' => '',
-            'risk_area_ids' => [$area->id],
         ])->assertRedirect();
 
         $alert = Alert::query()->firstOrFail();
+        $this->assertSame('Bongabong', $alert->affected_barangay);
+        $this->assertSame($prediction->id, $alert->fire_risk_prediction_id);
+        $this->assertCount(0, $alert->riskAreas);
         $alert->update(['starts_at' => now()->addDay()]);
         $this->actingAs($approver)->patch(route('alerts.approve', $alert))->assertRedirect();
         $this->actingAs($approver)

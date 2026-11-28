@@ -8,6 +8,8 @@ use App\Http\Resources\Api\V1\AlertRecipientResource;
 use App\Http\Resources\Api\V1\AlertResource;
 use App\Models\Alert;
 use App\Models\AlertRecipient;
+use App\Models\FireRiskPrediction;
+use App\Models\HazardSource;
 use App\Models\RiskArea;
 use App\Models\User;
 use App\Services\AuditRecorder;
@@ -65,8 +67,15 @@ class AlertController extends Controller
         $validated = $this->validatedAlert($request);
 
         $alert = DB::transaction(function () use ($validated, $request, $audit): Alert {
+            $prediction = isset($validated['fire_risk_prediction_id'])
+                ? FireRiskPrediction::query()->findOrFail($validated['fire_risk_prediction_id'])
+                : null;
             $alert = Alert::create([
                 'hazard_source_id' => $validated['hazard_source_id'],
+                'fire_risk_prediction_id' => $prediction?->id,
+                'affected_barangay' => $prediction?->barangay,
+                'affected_latitude' => $prediction?->latitude,
+                'affected_longitude' => $prediction?->longitude,
                 'title' => $validated['title'],
                 'message' => $validated['message'],
                 'safety_instructions' => $validated['safety_instructions'],
@@ -77,13 +86,16 @@ class AlertController extends Controller
                 'ends_at' => $validated['ends_at'] ?? null,
                 'created_by' => $request->user()->id,
             ]);
-            $alert->riskAreas()->sync($validated['risk_area_ids']);
+            $riskAreaIds = $validated['risk_area_ids'] ?? [];
+            $alert->riskAreas()->sync($riskAreaIds);
 
             $audit->record($request->user(), 'alert.drafted', $alert, [
                 'title' => $alert->title,
                 'severity' => $alert->severity,
                 'intensity' => $alert->intensity,
-                'risk_area_ids' => $validated['risk_area_ids'],
+                'risk_area_ids' => $riskAreaIds,
+                'fire_risk_prediction_id' => $prediction?->id,
+                'affected_barangay' => $prediction?->barangay,
             ]);
 
             return $alert;
@@ -111,8 +123,11 @@ class AlertController extends Controller
 
         if ($request->isMethod('PATCH')) {
             $alert->load('riskAreas');
+            $hazardType = $request->input('hazard_type', $alert->source()->value('source_type'));
             $request->merge([
                 'hazard_source_id' => $request->input('hazard_source_id', $alert->hazard_source_id),
+                'hazard_type' => $hazardType,
+                'fire_risk_prediction_id' => $request->input('fire_risk_prediction_id', $alert->fire_risk_prediction_id),
                 'title' => $request->input('title', $alert->title),
                 'message' => $request->input('message', $alert->message),
                 'safety_instructions' => $request->input('safety_instructions', $alert->safety_instructions),
@@ -120,7 +135,10 @@ class AlertController extends Controller
                 'intensity' => $request->input('intensity', $alert->intensity),
                 'starts_at' => $request->input('starts_at', $alert->starts_at?->toIso8601String()),
                 'ends_at' => $request->input('ends_at', $alert->ends_at?->toIso8601String()),
-                'risk_area_ids' => $request->input('risk_area_ids', $alert->riskAreas->modelKeys()),
+                'risk_area_ids' => $request->input(
+                    'risk_area_ids',
+                    $hazardType === HazardType::Fire->value ? [] : $alert->riskAreas->modelKeys(),
+                ),
             ]);
         }
 
@@ -128,8 +146,15 @@ class AlertController extends Controller
         $wasApproved = $alert->status === Alert::STATUS_APPROVED;
 
         DB::transaction(function () use ($alert, $validated, $request, $audit, $wasApproved): void {
+            $prediction = isset($validated['fire_risk_prediction_id'])
+                ? FireRiskPrediction::query()->findOrFail($validated['fire_risk_prediction_id'])
+                : null;
             $alert->update([
                 'hazard_source_id' => $validated['hazard_source_id'],
+                'fire_risk_prediction_id' => $prediction?->id,
+                'affected_barangay' => $prediction?->barangay,
+                'affected_latitude' => $prediction?->latitude,
+                'affected_longitude' => $prediction?->longitude,
                 'title' => $validated['title'],
                 'message' => $validated['message'],
                 'safety_instructions' => $validated['safety_instructions'],
@@ -141,13 +166,16 @@ class AlertController extends Controller
                 'approved_by' => null,
                 'approved_at' => null,
             ]);
-            $alert->riskAreas()->sync($validated['risk_area_ids']);
+            $riskAreaIds = $validated['risk_area_ids'] ?? [];
+            $alert->riskAreas()->sync($riskAreaIds);
             $audit->record($request->user(), 'alert.revised', $alert, [
                 'title' => $alert->title,
                 'severity' => $alert->severity,
                 'intensity' => $alert->intensity,
                 'approval_reset' => $wasApproved,
-                'risk_area_ids' => $validated['risk_area_ids'],
+                'risk_area_ids' => $riskAreaIds,
+                'fire_risk_prediction_id' => $prediction?->id,
+                'affected_barangay' => $prediction?->barangay,
             ]);
         });
 
@@ -187,7 +215,7 @@ class AlertController extends Controller
             return back()->withErrors(['approval' => 'The official source must be verified before approval.']);
         }
 
-        if (! $alert->riskAreas()->where('is_active', true)->exists()) {
+        if (! $this->hasEstimateCoverage($alert) && ! $alert->riskAreas()->where('is_active', true)->exists()) {
             if ($this->isApiRequest($request)) {
                 return response()->json(['message' => 'At least one selected vulnerable area must still be active.'], 409);
             }
@@ -240,9 +268,12 @@ class AlertController extends Controller
                 abort(409, 'The official source must be verified before an alert can be published.');
             }
 
-            $areas = $lockedAlert->riskAreas()->where('is_active', true)->get();
+            $usesEstimateCoverage = $this->hasEstimateCoverage($lockedAlert);
+            $areas = $usesEstimateCoverage
+                ? collect()
+                : $lockedAlert->riskAreas()->where('is_active', true)->get();
 
-            if ($areas->isEmpty()) {
+            if (! $usesEstimateCoverage && $areas->isEmpty()) {
                 abort(409, 'At least one selected vulnerable area must still be active.');
             }
 
@@ -255,21 +286,23 @@ class AlertController extends Controller
                 'published_at' => $now,
             ]);
 
-            $lockedAlert->riskAreas()->sync($areas->mapWithKeys(fn (RiskArea $area): array => [
-                $area->id => [
-                    'coverage_snapshot' => [
-                        'name' => $area->name,
-                        'barangay' => $area->barangay,
-                        'sitio' => $area->sitio,
-                        'classification' => $area->classification,
-                        'boundary' => $area->boundary,
-                        'latitude' => $area->latitude,
-                        'longitude' => $area->longitude,
+            if (! $usesEstimateCoverage) {
+                $lockedAlert->riskAreas()->sync($areas->mapWithKeys(fn (RiskArea $area): array => [
+                    $area->id => [
+                        'coverage_snapshot' => [
+                            'name' => $area->name,
+                            'barangay' => $area->barangay,
+                            'sitio' => $area->sitio,
+                            'classification' => $area->classification,
+                            'boundary' => $area->boundary,
+                            'latitude' => $area->latitude,
+                            'longitude' => $area->longitude,
+                        ],
+                        'created_at' => $now,
+                        'updated_at' => $now,
                     ],
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ],
-            ])->all());
+                ])->all());
+            }
 
             $lockedAlert->recipients()->createMany($residents->map(fn (User $resident): array => [
                 'user_id' => $resident->id,
@@ -288,7 +321,9 @@ class AlertController extends Controller
                 'recipient_count' => $residents->count(),
                 'delivery_scope' => 'all_active_residents',
                 'approval_bypassed' => $publishingDraft,
-                'risk_area_ids' => $areas->modelKeys(),
+                'risk_area_ids' => $areas->pluck('id')->all(),
+                'fire_risk_prediction_id' => $lockedAlert->fire_risk_prediction_id,
+                'affected_barangay' => $lockedAlert->affected_barangay,
                 'starts_at' => $now->toIso8601String(),
             ]);
 
@@ -317,6 +352,10 @@ class AlertController extends Controller
         $revision = DB::transaction(function () use ($alert, $request, $audit): Alert {
             $revision = Alert::create([
                 'hazard_source_id' => $alert->hazard_source_id,
+                'fire_risk_prediction_id' => $alert->fire_risk_prediction_id,
+                'affected_barangay' => $alert->affected_barangay,
+                'affected_latitude' => $alert->affected_latitude,
+                'affected_longitude' => $alert->affected_longitude,
                 'title' => $alert->title.' (Revised)',
                 'message' => $alert->message,
                 'safety_instructions' => $alert->safety_instructions,
@@ -452,13 +491,15 @@ class AlertController extends Controller
     private function validatedAlert(Request $request): array
     {
         $sourceRule = Rule::exists('hazard_sources', 'id')->where('verification_status', 'verified');
+        $hazardType = $request->input('hazard_type');
+        if (! $hazardType && $request->filled('hazard_source_id')) {
+            $hazardType = HazardSource::query()->whereKey($request->input('hazard_source_id'))->value('source_type');
+        }
+        $isFireAdvisory = $hazardType === HazardType::Fire->value;
         if ($request->filled('hazard_type')) {
             $sourceRule->where('source_type', $request->input('hazard_type'));
         }
         $riskAreaRule = Rule::exists('risk_areas', 'id')->where('is_active', true);
-        if ($request->input('hazard_type') === HazardType::Fire->value && $request->filled('barangay')) {
-            $riskAreaRule->where('barangay', $request->input('barangay'));
-        }
 
         $validated = $request->validate([
             'hazard_source_id' => [
@@ -466,7 +507,9 @@ class AlertController extends Controller
                 $sourceRule,
             ],
             'hazard_type' => ['sometimes', Rule::in([HazardType::Weather->value, HazardType::Fire->value])],
-            'barangay' => ['required_if:hazard_type,fire', 'nullable', 'string', 'max:120'],
+            'fire_risk_prediction_id' => $isFireAdvisory
+                ? ['required', 'integer', Rule::exists('fire_risk_predictions', 'id')->whereNotNull('latitude')->whereNotNull('longitude')]
+                : ['nullable', 'prohibited'],
             'title' => ['required', 'string', 'max:180'],
             'message' => ['required', 'string', 'max:5000'],
             'safety_instructions' => ['required', 'string', 'max:5000'],
@@ -474,13 +517,12 @@ class AlertController extends Controller
             'intensity' => ['sometimes', 'required', 'integer', 'between:1,5'],
             'starts_at' => ['required', 'date'],
             'ends_at' => ['nullable', 'date', 'after:starts_at'],
-            'risk_area_ids' => ['required', 'array', 'min:1'],
-            'risk_area_ids.*' => [
-                'required',
-                'integer',
-                'distinct',
-                $riskAreaRule,
-            ],
+            'risk_area_ids' => $isFireAdvisory
+                ? ['nullable', 'array', 'size:0']
+                : ['required', 'array', 'min:1'],
+            'risk_area_ids.*' => $isFireAdvisory
+                ? ['prohibited']
+                : ['required', 'integer', 'distinct', $riskAreaRule],
         ]);
 
         $validated['starts_at'] = CarbonImmutable::parse($validated['starts_at'], 'Asia/Manila')->utc();
@@ -489,6 +531,13 @@ class AlertController extends Controller
             : null;
 
         return $validated;
+    }
+
+    private function hasEstimateCoverage(Alert $alert): bool
+    {
+        return $alert->fire_risk_prediction_id !== null
+            && filled($alert->affected_barangay)
+            && $alert->source()->where('source_type', HazardType::Fire->value)->exists();
     }
 
     private function isApiRequest(Request $request): bool

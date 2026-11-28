@@ -25,6 +25,10 @@ class Alert extends Model
 
     protected $fillable = [
         'hazard_source_id',
+        'fire_risk_prediction_id',
+        'affected_barangay',
+        'affected_latitude',
+        'affected_longitude',
         'title',
         'message',
         'safety_instructions',
@@ -44,6 +48,8 @@ class Alert extends Model
     {
         return [
             'intensity' => 'integer',
+            'affected_latitude' => 'float',
+            'affected_longitude' => 'float',
             'starts_at' => 'datetime',
             'ends_at' => 'datetime',
             'approved_at' => 'datetime',

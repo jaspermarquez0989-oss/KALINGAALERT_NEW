@@ -109,6 +109,7 @@ export default function FireRiskPredictionPage({ user }) {
             setResult(response.data);
             if (coordinates) {
                 setPredictionLocation({
+                    id: response.data.prediction_id,
                     ...coordinates,
                     barangay: form.barangay,
                     scorePercent: response.data.score_percent,

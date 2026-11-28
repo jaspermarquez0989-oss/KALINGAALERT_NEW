@@ -84,7 +84,7 @@ function AlertCard({ alert, href, onClick, isRead }) {
             <div className="alert-card-top"><StatusBadge>{alert.hazard_source?.source_type === 'fire' ? 'Fire advisory' : 'Weather advisory'}</StatusBadge><StatusBadge>{alert.severity}</StatusBadge><IntensityIndicator value={alert.intensity} /><StatusBadge>{alert.status}</StatusBadge>{isRead !== undefined && <span className={`alert-read-indicator ${isRead ? 'is-read' : 'is-unread'}`}><span aria-hidden="true" />{isRead ? 'Read' : 'Unread'}</span>}</div>
             <h3>{alert.title}</h3>
             <p>{alert.message}</p>
-            <div className="alert-card-foot"><span>{alert.risk_areas?.length ?? 0} covered area(s)</span><span>{formatDate(alert.published_at ?? alert.created_at)}</span></div>
+            <div className="alert-card-foot"><span>{alert.affected_barangay ?? `${alert.risk_areas?.length ?? 0} covered area(s)`}</span><span>{formatDate(alert.published_at ?? alert.created_at)}</span></div>
         </a>
     );
 }
@@ -346,6 +346,8 @@ export function DashboardPage({ user }) {
                 alerts: area.alerts.filter((alert) => String(alert.id) === selectedDashboardAlertId),
             }))
         : data.areas;
+    const mapFireAdvisories = (selectedAlert ? [selectedAlert] : activeAlerts)
+        .filter((alert) => alert.affected_barangay && alert.affected_latitude !== null && alert.affected_longitude !== null);
     const pageSize = 4;
     const pageCount = Math.max(1, Math.ceil(activeAlerts.length / pageSize));
     const visibleAlerts = selectedAlert
@@ -421,11 +423,12 @@ export function DashboardPage({ user }) {
                 )}
             </div>
             <Panel title={isResident ? 'Community risk areas' : 'Mapped coverage and staff estimates'} className="map-panel">
-                {data.areas.length || isResident || data.predictions?.length
+                {data.areas.length || isResident || data.predictions?.length || mapFireAdvisories.length
                     ? <MapView
                         areas={mapAreas.filter((area) => area.is_active)}
                         incidents={isResident ? data.incidents : undefined}
                         predictions={isResident ? undefined : data.predictions}
+                        fireAdvisories={mapFireAdvisories}
                         canCreateAdvisories={!isResident && ['system_admin', 'mdrrmo', 'alert_operator'].includes(user.role)}
                     />
                     : <EmptyState title="No active mapped areas" />}
@@ -476,7 +479,7 @@ export function AlertsPage() {
                                 <td><StatusBadge>{alert.severity}</StatusBadge></td>
                                 <td><IntensityIndicator compact value={alert.intensity} /></td>
                                 <td><StatusBadge>{alert.status}</StatusBadge></td>
-                                <td>{alert.risk_areas?.length ?? 0} area(s)</td>
+                                <td>{alert.affected_barangay ?? `${alert.risk_areas?.length ?? 0} area(s)`}</td>
                                 <td>{formatDate(alert.updated_at)}</td>
                                 <td>
                                     <div className="inline-actions">
@@ -513,12 +516,14 @@ export function AlertFormPage({ id }) {
     const editing = Boolean(id);
     const initialParams = new URLSearchParams(window.location.search);
     const initialHazardType = initialParams.get('type') === 'fire' ? 'fire' : 'weather';
-    const initialBarangay = initialParams.get('barangay') ?? '';
+    const initialPredictionId = initialParams.get('prediction_id') ?? '';
     const [sources, setSources] = useState([]);
     const [areas, setAreas] = useState([]);
+    const [predictions, setPredictions] = useState([]);
     const [form, setForm] = useState({
         hazard_type: initialHazardType,
         hazard_source_id: '',
+        fire_risk_prediction_id: initialPredictionId,
         title: '',
         message: '',
         safety_instructions: '',
@@ -526,7 +531,6 @@ export function AlertFormPage({ id }) {
         intensity: 3,
         starts_at: toManilaDateTimeInput(new Date().toISOString()),
         ends_at: '',
-        barangay: initialBarangay,
         risk_area_ids: [],
     });
     const [loading, setLoading] = useState(true);
@@ -541,21 +545,36 @@ export function AlertFormPage({ id }) {
                 const requests = [
                     api('/hazard-sources?verification_status=verified&per_page=100'),
                     api('/risk-areas?is_active=true&per_page=100'),
+                    api('/fire-risk/predictions'),
                 ];
                 if (editing) requests.push(api(`/alerts/${id}`));
-                const [sourceResponse, areaResponse, alertResponse] = await Promise.all(requests);
+                const [sourceResponse, areaResponse, predictionResponse, alertResponse] = await Promise.all(requests);
                 if (!isCurrent) return;
 
                 setSources(sourceResponse.data ?? []);
                 setAreas(areaResponse.data ?? []);
+                const availablePredictions = predictionResponse.data ?? [];
 
                 if (alertResponse?.data) {
                     const alert = alertResponse.data;
-                    const alertBarangays = [...new Set((alert.risk_areas ?? []).map((area) => area.barangay))];
-                    const alertBarangay = alertBarangays.length === 1 ? alertBarangays[0] : '';
+                    const savedPrediction = alert.fire_risk_prediction_id && alert.affected_barangay
+                        ? [{
+                            id: alert.fire_risk_prediction_id,
+                            barangay: alert.affected_barangay,
+                            latitude: alert.affected_latitude,
+                            longitude: alert.affected_longitude,
+                            score_percent: null,
+                            created_at: null,
+                        }]
+                        : [];
+                    setPredictions([
+                        ...availablePredictions.filter((prediction) => String(prediction.id) !== String(alert.fire_risk_prediction_id)),
+                        ...savedPrediction,
+                    ]);
                     setForm({
                         hazard_type: alert.hazard_source?.source_type ?? 'weather',
                         hazard_source_id: String(alert.hazard_source?.id ?? ''),
+                        fire_risk_prediction_id: alert.fire_risk_prediction_id ? String(alert.fire_risk_prediction_id) : '',
                         title: alert.title,
                         message: alert.message,
                         safety_instructions: alert.safety_instructions,
@@ -563,18 +582,12 @@ export function AlertFormPage({ id }) {
                         intensity: alert.intensity ?? 3,
                         starts_at: toManilaDateTimeInput(alert.starts_at),
                         ends_at: toManilaDateTimeInput(alert.ends_at),
-                        barangay: alertBarangay,
-                        risk_area_ids: alertBarangays.length === 1
-                            ? alert.risk_areas.filter((area) => area.barangay === alertBarangay).map((area) => String(area.id))
-                            : (alert.hazard_source?.source_type === 'fire' ? [] : alert.risk_areas?.map((area) => String(area.id)) ?? []),
+                        risk_area_ids: alert.hazard_source?.source_type === 'fire'
+                            ? []
+                            : alert.risk_areas?.map((area) => String(area.id)) ?? [],
                     });
-                } else if (initialHazardType === 'fire' && initialBarangay) {
-                    setForm((current) => ({
-                        ...current,
-                        risk_area_ids: (areaResponse.data ?? [])
-                            .filter((area) => area.barangay === initialBarangay)
-                            .map((area) => String(area.id)),
-                    }));
+                } else {
+                    setPredictions(availablePredictions);
                 }
             } catch (requestError) {
                 if (isCurrent) setError(requestError.message);
@@ -593,23 +606,13 @@ export function AlertFormPage({ id }) {
                 ...current,
                 hazard_type: value,
                 hazard_source_id: '',
-                barangay: '',
+                fire_risk_prediction_id: '',
                 risk_area_ids: [],
             }));
             return;
         }
 
         setForm((current) => ({ ...current, [key]: value }));
-    }
-
-    function selectBarangay(barangay) {
-        setForm((current) => ({
-            ...current,
-            barangay,
-            risk_area_ids: areas
-                .filter((area) => area.barangay === barangay)
-                .map((area) => String(area.id)),
-        }));
     }
 
     function toggleArea(areaId) {
@@ -627,14 +630,21 @@ export function AlertFormPage({ id }) {
         setSaving(true);
 
         try {
+            const body = {
+                ...form,
+                hazard_source_id: Number(form.hazard_source_id),
+                ends_at: form.ends_at || null,
+            };
+            if (form.hazard_type === 'fire') {
+                body.fire_risk_prediction_id = Number(form.fire_risk_prediction_id);
+                delete body.risk_area_ids;
+            } else {
+                body.fire_risk_prediction_id = null;
+                body.risk_area_ids = form.risk_area_ids.map(Number);
+            }
             const payload = await api(editing ? `/alerts/${id}` : '/alerts', {
                 method: editing ? 'PUT' : 'POST',
-                body: {
-                    ...form,
-                    hazard_source_id: Number(form.hazard_source_id),
-                    risk_area_ids: form.risk_area_ids.map(Number),
-                    ends_at: form.ends_at || null,
-                },
+                body,
             });
             window.location.assign(`/alerts/${payload.data.id}`);
         } catch (requestError) {
@@ -646,10 +656,7 @@ export function AlertFormPage({ id }) {
 
     if (loading) return <LoadingState />;
     const availableSources = sources.filter((source) => source.source_type === form.hazard_type);
-    const availableAreas = form.hazard_type === 'fire'
-        ? areas.filter((area) => area.barangay === form.barangay)
-        : areas;
-    const availableBarangays = [...new Set(areas.map((area) => area.barangay))].sort((a, b) => a.localeCompare(b));
+    const selectedPrediction = predictions.find((prediction) => String(prediction.id) === form.fire_risk_prediction_id);
 
     return (
         <>
@@ -657,7 +664,7 @@ export function AlertFormPage({ id }) {
                 eyebrow="ADVISORY OPERATIONS"
                 title={editing ? 'Revise draft advisory' : (form.hazard_type === 'fire' ? 'Prepare a fire advisory' : 'Prepare an advisory')}
                 description={form.hazard_type === 'fire'
-                    ? 'Use a verified BFP source. A fire-risk map pin preselects the barangay coverage but is not an official incident report.'
+                    ? 'Use a verified BFP source and select the affected barangay from a fire-risk estimate pin.'
                     : 'Drafts remain unpublished until approved, or published immediately by a system administrator or MDRRMO.'}
             />
             <Panel className="form-panel advisory-form-panel">
@@ -680,13 +687,20 @@ export function AlertFormPage({ id }) {
                         <Field label="Advisory title"><TextInput value={form.title} maxLength="180" required onChange={(event) => update('title', event.target.value)} /></Field>
                     </div>
                     {form.hazard_type === 'fire' && (
-                        <Field label="Affected barangay" hint="Selecting a barangay automatically selects its active mapped risk areas.">
-                            <SelectInput value={form.barangay} required onChange={(event) => selectBarangay(event.target.value)}>
-                                <option value="">Choose a barangay</option>
-                                {form.barangay && !availableBarangays.includes(form.barangay) && <option value={form.barangay}>{form.barangay} (no active mapped risk areas)</option>}
-                                {availableBarangays.map((barangay) => <option value={barangay} key={barangay}>{barangay}</option>)}
+                        <Field label="Affected barangay" hint="This uses the barangay and map point saved with the selected fire-risk estimate, not risk-area polygons.">
+                            <SelectInput value={form.fire_risk_prediction_id} required onChange={(event) => update('fire_risk_prediction_id', event.target.value)}>
+                                <option value="">Choose a fire-risk estimate</option>
+                                {predictions.map((prediction) => <option value={prediction.id} key={prediction.id}>
+                                    {prediction.barangay} · {prediction.score_percent === null ? 'Saved pin' : `${Number(prediction.score_percent).toFixed(1)} / 100`} · {prediction.created_at ? formatDate(prediction.created_at) : 'Previously selected'}
+                                </option>)}
                             </SelectInput>
                         </Field>
+                    )}
+                    {form.hazard_type === 'fire' && predictions.length === 0 && (
+                        <Notice tone="info">No fire-risk estimate pins are available. Calculate an estimate first, then prepare the advisory from its map pin.</Notice>
+                    )}
+                    {form.hazard_type === 'fire' && selectedPrediction && (
+                        <Notice tone="info">The fire advisory will cover {selectedPrediction.barangay}. The estimate pin is a barangay reference point, not an exact fire location.</Notice>
                     )}
                     <div className="form-grid advisory-message-fields">
                         <Field label="Message"><TextArea value={form.message} maxLength="5000" rows="5" required onChange={(event) => update('message', event.target.value)} /></Field>
@@ -713,15 +727,15 @@ export function AlertFormPage({ id }) {
                         <Field label="Starts at (Philippine time)"><TextInput type="datetime-local" value={form.starts_at} required onChange={(event) => update('starts_at', event.target.value)} /></Field>
                         <Field label="Ends at (optional)"><TextInput type="datetime-local" value={form.ends_at} onChange={(event) => update('ends_at', event.target.value)} /></Field>
                     </div>
-                    <fieldset className="choice-fieldset"><legend>{form.hazard_type === 'fire' ? `Areas covered${form.barangay ? ` · ${form.barangay}` : ''}` : 'Areas covered'}</legend>
-                        {availableAreas.length === 0 ? <p className="muted">{form.hazard_type === 'fire' && !form.barangay ? 'Choose a barangay to see its active mapped risk areas.' : 'No active mapped risk areas are available for this barangay.'}</p> : availableAreas.map((area) => (
+                    {form.hazard_type !== 'fire' && <fieldset className="choice-fieldset"><legend>Areas covered</legend>
+                        {areas.length === 0 ? <p className="muted">No active risk areas are available.</p> : areas.map((area) => (
                             <label className="choice-row" key={area.id}>
                                 <input type="checkbox" checked={form.risk_area_ids.includes(String(area.id))} onChange={() => toggleArea(area.id)} />
                                 <span><strong>{area.name}</strong><small>{area.barangay}{area.sitio ? ` · ${area.sitio}` : ''}</small></span>
                             </label>
                         ))}
-                    </fieldset>
-                    <FormActions><SubmitButton saving={saving} disabled={availableSources.length === 0}>{editing ? 'Save revision' : 'Save draft'} </SubmitButton><LinkButton href="/alerts" secondary>Cancel</LinkButton></FormActions>
+                    </fieldset>}
+                    <FormActions><SubmitButton saving={saving} disabled={availableSources.length === 0 || (form.hazard_type === 'fire' && !selectedPrediction)}>{editing ? 'Save revision' : 'Save draft'} </SubmitButton><LinkButton href="/alerts" secondary>Cancel</LinkButton></FormActions>
                 </form>
             </Panel>
         </>
@@ -789,6 +803,7 @@ export function AlertDetailPage({ id, user }) {
             safety_instructions: alert.safety_instructions,
         }],
     }));
+    const fireAdvisories = alert.affected_barangay ? [alert] : [];
 
     return (
         <>
@@ -796,9 +811,9 @@ export function AlertDetailPage({ id, user }) {
             <Notice message={actionError}>{actionError}</Notice>
             <div className="detail-grid">
                 <Panel title="Advisory"><div className="detail-badges"><StatusBadge>{alert.hazard_source?.source_type === 'fire' ? 'Fire advisory' : 'Weather advisory'}</StatusBadge><StatusBadge>{alert.severity}</StatusBadge><IntensityIndicator value={alert.intensity} /><StatusBadge>{alert.status}</StatusBadge></div><p className="detail-message">{alert.message}</p><h3>Safety instructions</h3><p className="detail-safety-instructions">{alert.safety_instructions}</p><dl className="detail-list"><div><dt>Starts</dt><dd>{formatDate(alert.starts_at)}</dd></div><div><dt>Ends</dt><dd>{formatDate(alert.ends_at)}</dd></div><div><dt>Recipients</dt><dd>{alert.recipient_count ?? 'Not published'}</dd></div><div><dt>Drafted by</dt><dd>{alert.creator?.name ?? '—'}</dd></div><div><dt>Approved by</dt><dd>{alert.approver?.name ?? 'Not approved'}</dd></div></dl></Panel>
-                <Panel title="Source and coverage"><div className="source-detail"><strong>{alert.hazard_source?.title}</strong><span>{alert.hazard_source?.organization}</span>{alert.hazard_source?.source_url && <a className="text-link" href={alert.hazard_source.source_url} target="_blank" rel="noreferrer">Open source</a>}</div><div className="coverage-list">{alert.risk_areas?.map((area) => <div key={area.id}><strong>{area.name}</strong><small>{area.barangay} · {area.classification}</small></div>)}</div></Panel>
+                <Panel title="Source and coverage"><div className="source-detail"><strong>{alert.hazard_source?.title}</strong><span>{alert.hazard_source?.organization}</span>{alert.hazard_source?.source_url && <a className="text-link" href={alert.hazard_source.source_url} target="_blank" rel="noreferrer">Open source</a>}</div><div className="coverage-list">{alert.affected_barangay ? <div><strong>{alert.affected_barangay}</strong><small>Barangay from fire-risk estimate pin</small></div> : alert.risk_areas?.map((area) => <div key={area.id}><strong>{area.name}</strong><small>{area.barangay} · {area.classification}</small></div>)}</div></Panel>
             </div>
-            <Panel title="Coverage heatmap"><MapView areas={coverageAreas} /></Panel>
+            <Panel title={alert.affected_barangay ? 'Affected barangay pin' : 'Coverage heatmap'}><MapView areas={coverageAreas} fireAdvisories={fireAdvisories} /></Panel>
             <Panel title="Workflow actions">
                 <div className="workflow-actions">
                     {['draft', 'approved'].includes(alert.status) && <LinkButton href={`/alerts/${alert.id}/edit`} secondary>Edit draft</LinkButton>}
@@ -878,6 +893,7 @@ export function ResidentAlertPage({ id }) {
             safety_instructions: alert.safety_instructions,
         }],
     }));
+    const fireAdvisories = alert.affected_barangay ? [alert] : [];
 
     return (
         <>
@@ -900,9 +916,9 @@ export function ResidentAlertPage({ id }) {
                         </dl>
                     </div>
                 </Panel>
-                <Panel title="Official source"><strong>{alert.hazard_source?.title}</strong><p className="muted">{alert.hazard_source?.organization} · {formatDate(alert.hazard_source?.issued_at)}</p>{alert.hazard_source?.source_url && <a className="text-link" href={alert.hazard_source.source_url} target="_blank" rel="noreferrer">View official source</a>}<div className="coverage-list">{alert.risk_areas?.map((area) => <div key={area.id}><strong>{area.name}</strong><small>{area.barangay}{area.sitio ? ` · ${area.sitio}` : ''}</small></div>)}</div></Panel>
+                <Panel title="Official source"><strong>{alert.hazard_source?.title}</strong><p className="muted">{alert.hazard_source?.organization} · {formatDate(alert.hazard_source?.issued_at)}</p>{alert.hazard_source?.source_url && <a className="text-link" href={alert.hazard_source.source_url} target="_blank" rel="noreferrer">View official source</a>}<div className="coverage-list">{alert.affected_barangay ? <div><strong>{alert.affected_barangay}</strong><small>Barangay from fire-risk estimate pin</small></div> : alert.risk_areas?.map((area) => <div key={area.id}><strong>{area.name}</strong><small>{area.barangay}{area.sitio ? ` · ${area.sitio}` : ''}</small></div>)}</div></Panel>
             </div>
-            <Panel title="Affected-area heatmap"><MapView areas={coverageAreas} /></Panel>
+            <Panel title={alert.affected_barangay ? 'Affected barangay pin' : 'Affected-area heatmap'}><MapView areas={coverageAreas} fireAdvisories={fireAdvisories} /></Panel>
             <p className="disclaimer"><strong>Safety notice</strong> For emergencies, follow local authorities and official emergency service channels.</p>
         </>
     );

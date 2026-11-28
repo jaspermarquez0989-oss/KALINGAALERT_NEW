@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\UserRole;
 use App\Models\Alert;
 use App\Models\AuditLog;
+use App\Models\FireRiskPrediction;
 use App\Models\HazardSource;
 use App\Models\RiskArea;
 use App\Models\User;
@@ -326,18 +327,27 @@ class ApiV1Test extends TestCase
             'verified_by' => $verifier->id,
             'verified_at' => now(),
         ]);
-        $area = $this->makeRiskArea($verifier);
+        $prediction = FireRiskPrediction::create([
+            'barangay' => 'Bongabong',
+            'latitude' => 12.73,
+            'longitude' => 121.36,
+            'score_percent' => 68.5,
+            'threshold' => 0.5,
+            'threshold_met' => true,
+            'model_version' => 'test',
+            'prediction_radius_meters' => 500,
+            'created_by' => $creator->id,
+        ]);
         $token = $this->tokenFor($creator);
         $payload = [
             'hazard_source_id' => $source->id,
             'hazard_type' => 'fire',
-            'barangay' => $area->barangay,
+            'fire_risk_prediction_id' => $prediction->id,
             'title' => 'Barangay fire advisory',
             'message' => 'Official fire information for the selected barangay.',
             'safety_instructions' => 'Follow BFP and local authority instructions.',
             'severity' => 'warning',
             'starts_at' => now()->toIso8601String(),
-            'risk_area_ids' => [$area->id],
         ];
 
         $this->withToken($token)
@@ -347,15 +357,12 @@ class ApiV1Test extends TestCase
 
         $this->clearJwtRequestState();
         $this->withToken($token)
-            ->postJson('/api/v1/alerts', [...$payload, 'barangay' => 'Different Barangay'])
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors(['risk_area_ids.0']);
-
-        $this->clearJwtRequestState();
-        $this->withToken($token)
             ->postJson('/api/v1/alerts', $payload)
             ->assertCreated()
             ->assertJsonPath('data.hazard_source.source_type', 'fire')
+            ->assertJsonPath('data.affected_barangay', 'Bongabong')
+            ->assertJsonPath('data.fire_risk_prediction_id', $prediction->id)
+            ->assertJsonPath('data.risk_areas', [])
             ->assertJsonPath('data.status', Alert::STATUS_DRAFT);
     }
 
@@ -999,7 +1006,7 @@ class ApiV1Test extends TestCase
             ->assertJsonPath('data.model_version', 'mdrrmo-bongabong-barangay-500m-24h-v4')
             ->assertJsonPath('data.threshold', 0.5)
             ->assertJsonStructure([
-                'data' => ['prediction', 'threshold_met', 'score_percent', 'disclaimer'],
+                'data' => ['prediction_id', 'prediction', 'threshold_met', 'score_percent', 'disclaimer'],
             ]);
 
         $this->assertGreaterThanOrEqual(0, $prediction->json('data.score_percent'));

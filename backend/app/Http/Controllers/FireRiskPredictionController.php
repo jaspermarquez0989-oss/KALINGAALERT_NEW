@@ -118,6 +118,7 @@ class FireRiskPredictionController extends Controller
 
         return response()->json([
             'data' => [
+                'prediction_id' => $prediction->id,
                 'prediction' => $thresholdMet ? 'above_threshold' : 'below_threshold',
                 'threshold_met' => $thresholdMet,
                 'score_percent' => round($score * 100, 1),
