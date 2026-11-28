@@ -464,7 +464,7 @@ export function AlertsPage() {
                 eyebrow="ADVISORY OPERATIONS"
                 title="Advisories"
                 description="Prepare, review, and publish verified hazard advisories."
-                action={<div className="inline-actions"><LinkButton href="/alerts/create">Prepare advisory</LinkButton><LinkButton href="/alerts/create?type=fire" secondary>Prepare fire advisory</LinkButton></div>}
+                action={<div className="inline-actions"><LinkButton href="/alerts/create">Prepare weather advisory</LinkButton><LinkButton href="/alerts/create?type=fire" secondary>Prepare fire advisory</LinkButton></div>}
             />
             <Notice>{revisionError}</Notice>
             <Panel>
